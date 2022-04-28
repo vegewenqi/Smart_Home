@@ -7,13 +7,13 @@ from gym.spaces.box import Box
 import casadi as csd
 import json
 from base_types import Env
-from plot import save_data, read_data, plot_data
+from plot_mpc import save_data, read_data, plot_data
 import pickle
 
 
 def rollout_sample(env, agent, n_step, mode="train"):
     states = np.zeros((agent.obs_dim, n_step))
-    actions = np.zeros((agent.action_dim, n_step))
+    actions = np.zeros((agent.action_dim + 3, n_step))
     l_spos = np.zeros((1, n_step))
     l_tems = np.zeros((1, n_step))
     rewards = np.zeros((1, n_step))
@@ -26,8 +26,14 @@ def rollout_sample(env, agent, n_step, mode="train"):
         action, add_info = agent.get_action(state, mode=mode)
         next_state, reward, done, _ = env.step(action)
 
+        # record P_pv and P_app for analysis
+        P_pv = env.beta * env.A_pv * env.uncertainty[0, add_info['time']]
+        P_app = env.uncertainty[1, add_info['time']]
+        Price = env.price[0, add_info['time']]
+        aug_action = np.concatenate((action, P_pv, P_app, Price), axis=None)
+
         states[:, step] = state
-        actions[:, step] = action
+        actions[:, step] = aug_action
 
         # print(add_info["soln"]["f"].full())
         print(f'step: {step}')
@@ -44,18 +50,13 @@ def rollout_sample(env, agent, n_step, mode="train"):
 
 
 def l_spo_fn(action, price):
-    l_spo = price[0] * (action[3] + action[6]) - price[1] * (action[0] + action[4])
+    l_spo = price[0] * action[2] - price[1] * action[3]
     return l_spo
 
 
 def l_tem_fn(state, coefficient):
     l_tem = coefficient * (state[1] - 23) * (state[1] - 27) + coefficient * 4
     return l_tem
-
-
-# def terminal(state):
-#     terminal_cost = 5 * (state[7] - 3) ** 2
-#     return terminal_cost
 
 
 class SmartHome(Env):
@@ -67,24 +68,17 @@ class SmartHome(Env):
         )
         # action box, dimension of 9
         self.action_space = Box(
-            low=np.array([0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            high=np.array([10, 10, 10, 10, 10, 10, 10, 5, 1], dtype=np.float32),
+            low=np.array([0, 0, 0, 0, 0, 0]),
+            high=np.array([10, 10, 10, 10, 10, 1], dtype=np.float32),
         )
 
         # adjustable env parameters in .json file
+        self.env_exist_noise = env_params["env_exist_noise"]
         # standard deviation
-        self.epsilon_rad_sigma = env_params[
-            "epsilon_rad_sigma"
-        ]  # p_rad ~= 0.55 kW, sigma ~= 0.0001
-        self.epsilon_out_sigma = env_params[
-            "epsilon_out_sigma"
-        ]  # T_out ~= 23, sigma ~= 0.1
-        self.epsilon_app_sigma = env_params[
-            "epsilon_app_sigma"
-        ]  # p_app ~= 3.5 kW, sigma ~= 0.01
-        self.epsilon_1234_sigma = env_params[
-            "epsilon_1234_sigma"
-        ]  # T ~= 40, sima ~= 0.1
+        self.epsilon_rad_sigma = env_params["epsilon_rad_sigma"]  # p_rad ~= 0.55 kW, sigma ~= 0.0001
+        self.epsilon_out_sigma = env_params["epsilon_out_sigma"]  # T_out ~= 23, sigma ~= 0.1
+        self.epsilon_app_sigma = env_params["epsilon_app_sigma"]  # p_app ~= 3.5 kW, sigma ~= 0.01
+        self.epsilon_1234_sigma = env_params["epsilon_1234_sigma"]  # T ~= 40, sima ~= 0.1
         self.c_low = env_params["c_low"]
         self.c_hig = env_params["c_hig"]
         self.dt = env_params["dt"]  # dt=900s=15min
@@ -151,7 +145,7 @@ class SmartHome(Env):
         # initialization
         self.reset()
 
-    # dimension=8, 9, 3
+    # dimension=8, 6, 3
     def conti_model(self, state, action, uncertainty):
         # states
         T_w = state[0]
@@ -164,15 +158,12 @@ class SmartHome(Env):
         E = state[7]
 
         # inputs
-        P_grid_pv = action[0]
-        P_lod_pv = action[1]
-        P_pv_ch = action[2]
-        P_grid_ch = action[3]
-        P_grid_dis = action[4]
-        P_lod_dis = action[5]
-        P_lod_grid = action[6]
-        P_hp = action[7]
-        X_v = action[8]
+        P_ch = action[0]
+        P_dis = action[1]
+        P_buy = action[2]
+        P_sell = action[3]
+        P_hp = action[4]
+        X_v = action[5]
 
         # uncertainties
         P_rad = uncertainty[0]
@@ -183,8 +174,6 @@ class SmartHome(Env):
         T_ret = (1 - math.exp(-self.rho)) * T_g + math.exp(-self.rho) * T_p
         T_inl = X_v * (T_1 - T_ret) + T_ret
         COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
-        P_ch = P_grid_ch + P_pv_ch
-        P_dis = P_grid_dis + P_lod_dis
 
         # ODEs
         d_T_w = (
@@ -228,7 +217,7 @@ class SmartHome(Env):
                         + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
                 )
         )
-        d_E = 1/3600 * (self.eta * P_ch - 1/self.eta * P_dis)  # battery's sampling time is one hour
+        d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)  # battery's sampling time is one hour
         dot_state = np.array([d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E])
         return dot_state
 
@@ -240,14 +229,14 @@ class SmartHome(Env):
         k4 = self.conti_model(state + self.dt * k3, action, uncertainty)
         next_state = (state
                       + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
-                      + 0 * np.array([np.random.normal(0, self.epsilon_1234_sigma),
-                                      np.random.normal(0, self.epsilon_1234_sigma),
-                                      np.random.normal(0, self.epsilon_1234_sigma),
-                                      np.random.normal(0, self.epsilon_1234_sigma),
-                                      0,
-                                      0,
-                                      0,
-                                      0]))
+                      + self.env_exist_noise * np.array([np.random.normal(0, self.epsilon_1234_sigma),
+                                                         np.random.normal(0, self.epsilon_1234_sigma),
+                                                         np.random.normal(0, self.epsilon_1234_sigma),
+                                                         np.random.normal(0, self.epsilon_1234_sigma),
+                                                         0,
+                                                         0,
+                                                         0,
+                                                         0]))
         return next_state
 
     # symbolic function
@@ -263,15 +252,12 @@ class SmartHome(Env):
         E = state[7]
 
         # inputs
-        P_grid_pv = action[0]
-        P_lod_pv = action[1]
-        P_pv_ch = action[2]
-        P_grid_ch = action[3]
-        P_grid_dis = action[4]
-        P_lod_dis = action[5]
-        P_lod_grid = action[6]
-        P_hp = action[7]
-        X_v = action[8]
+        P_ch = action[0]
+        P_dis = action[1]
+        P_buy = action[2]
+        P_sell = action[3]
+        P_hp = action[4]
+        X_v = action[5]
 
         # uncertainties
         P_rad = uncertainty[0]
@@ -282,8 +268,6 @@ class SmartHome(Env):
         T_ret = (1 - math.exp(-self.rho)) * T_g + math.exp(-self.rho) * T_p
         T_inl = X_v * (T_1 - T_ret) + T_ret
         COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
-        P_ch = P_grid_ch + P_pv_ch
-        P_dis = P_grid_dis + P_lod_dis
 
         # ODEs
         d_T_w = (
@@ -327,7 +311,7 @@ class SmartHome(Env):
                         + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
                 )
         )
-        d_E = self.eta * P_ch - 1 / self.eta * P_dis
+        d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
         dot_state = csd.vertcat(d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E)
         return dot_state
 
@@ -349,7 +333,7 @@ class SmartHome(Env):
     #     return mpc_model
 
     def reset(self):
-        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + np.array(
+        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0 * np.array(
             [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         ) * (np.random.normal(scale=1, size=8))
         self.state = self.state.clip(
@@ -364,9 +348,9 @@ class SmartHome(Env):
             self.state,
             action,
             self.uncertainty[:, self.t]
-            + 0 * np.array([np.random.normal(0, self.epsilon_rad_sigma),
-                            np.random.normal(0, self.epsilon_app_sigma),
-                            np.random.normal(0, self.epsilon_out_sigma)]))
+            + self.env_exist_noise * np.array([np.random.normal(0, self.epsilon_rad_sigma),
+                                               np.random.normal(0, self.epsilon_app_sigma),
+                                               np.random.normal(0, self.epsilon_out_sigma)]))
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high
         )
@@ -389,18 +373,12 @@ class SmartHome(Env):
         T_3 = state[6]
         E = state[7]
 
-        P_grid_pv = action[0]
-        P_lod_pv = action[1]
-        P_pv_ch = action[2]
-        P_grid_ch = action[3]
-        P_grid_dis = action[4]
-        P_lod_dis = action[5]
-        P_lod_grid = action[6]
-        P_hp = action[7]
-        X_v = action[8]
-
-        P_buy = P_grid_ch + P_lod_grid
-        P_sell = P_grid_dis + P_grid_pv
+        P_ch = action[0]
+        P_dis = action[1]
+        P_buy = action[2]
+        P_sell = action[3]
+        P_hp = action[4]
+        X_v = action[5]
 
         l_spo = price_buy * P_buy - price_sell * P_sell
         # l_term = self.c_low * max((23 - T_in), 0) + self.c_hig * max((T_in - 27), 0)
@@ -458,7 +436,7 @@ class Custom_QP_formulation:
         self.action_dim = env.action_space.shape[0]
         self.N = opt_horizon
         self.gamma = gamma
-        self.etau = 1e-6
+        self.etau = 1e-8
         self.th_param = th_param
         self.upper_tri = upper_tri
 
@@ -535,60 +513,54 @@ class Custom_QP_formulation:
 
         # input inequalities
         # 0 < p_hp + theta_hp < 3 + sigma_hp
-        hu.append(0 - (self.U[7, 0] + self.theta_hp))
-        hu.append((self.U[7, 0] + self.theta_hp) - 3)
+        hu.append(0 - (self.U[4, 0] + self.theta_hp))
+        hu.append((self.U[4, 0] + self.theta_hp) - 3)
         # 0.2 + sigma_xv < xv + theta_xv < 0.8 + sigma_xv
-        hu.append(0.2 - (self.U[8, 0] + self.theta_xv))
-        hu.append((self.U[8, 0] + self.theta_xv) - 0.8)
+        hu.append(0.2 - (self.U[5, 0] + self.theta_xv))
+        hu.append((self.U[5, 0] + self.theta_xv) - 0.8)
         # 0 < p_ch + theta_ch < 1 + sigma_ch
-        hu.append(0 - (self.U[2, 0] + self.U[3, 0] + self.theta_ch_dis[0]))
-        hu.append((self.U[2, 0] + self.U[3, 0] + self.theta_ch_dis[0]) - 1)
+        hu.append(0 - (self.U[0, 0] + self.theta_ch_dis[0]))
+        hu.append((self.U[0, 0] + self.theta_ch_dis[0]) - 1)
         # 0 < p_dis + theta_dis < 1 + sigma_dis
-        hu.append(0 - (self.U[4, 0] + self.U[5, 0] + self.theta_ch_dis[1]))
-        hu.append((self.U[4, 0] + self.U[5, 0] + self.theta_ch_dis[1]) - 1)
+        hu.append(0 - (self.U[1, 0] + self.theta_ch_dis[1]))
+        hu.append((self.U[1, 0] + self.theta_ch_dis[1]) - 1)
         # 0 < p_buy + theta_buy < 5 + sigma_buy
-        hu.append(0 - (self.U[3, 0] + self.U[6, 0] + self.theta_buy_sell[0]))
-        hu.append((self.U[3, 0] + self.U[6, 0] + self.theta_buy_sell[0]) - 5)
+        hu.append(0 - (self.U[2, 0] + self.theta_buy_sell[0]))
+        hu.append((self.U[2, 0] + self.theta_buy_sell[0]) - 5)
         # 0 < p_sell + theta_sell < 5 + sigma_sell
-        hu.append(0 - (self.U[0, 0] + self.U[4, 0] + self.theta_buy_sell[1]))
-        hu.append((self.U[0, 0] + self.U[4, 0] + self.theta_buy_sell[1]) - 5)
-        hu.append(-self.U[:, 0])
+        hu.append(0 - (self.U[3, 0] + self.theta_buy_sell[1]))
+        hu.append((self.U[3, 0] + self.theta_buy_sell[1]) - 5)
 
         # sys equalities: power balance
-        g.append((self.beta * self.A_pv * self.UNC[0, 0]) - (self.U[0, 0] + self.U[1, 0] + self.U[2, 0]))
-        g.append((self.UNC[1, 0] + self.U[7, 0]) - (self.U[6, 0] + self.U[1, 0] + self.U[5, 0]))
+        g.append((self.UNC[1, 0] + self.U[4, 0] + self.U[0, 0] + self.U[3, 0]) -
+                 (self.U[1, 0] + self.U[2, 0] + (self.beta * self.A_pv * self.UNC[0, 0])))
 
         # initial model
         xn = self.env.discrete_model_mpc(self.x, self.U[:, 0], self.UNC[:, 0], self.theta_model)
 
         for i in range(self.N - 1):
-            J += self.gamma ** i * (100 * self.stage_cost(self.X[:, i], self.U[:, i], self.theta,
+            J += self.gamma ** i * (self.stage_cost(self.X[:, i], self.U[:, i], self.theta,
                                                     self.UNC[:, i], self.PRICE[:, i]))
 
             ### extra terms in J
             # penalty for big delta u
-            # J += 10 * csd.dot((self.U[:-2, i+1] - self.U[:-2, i]), self.U[:-2, i+1] - self.U[:-2, i])
+            # J += 10 * csd.dot((self.U[:-2, i+1] - self.U[:-2, i]), (self.U[:-2, i+1] - self.U[:-2, i]))
             # J += 10 * csd.dot((self.U[-2, i+1] - self.U[-2, i]), self.U[-2, i+1] - self.U[-2, i])
-            # J += 10 * (self.U[-1, i+1] - self.U[-1, i]) * (self.U[-1, i+1] - self.U[-1, i])
-            # # penalty for order
-            # J += -10 * self.U[1, i]  # PV power severs lod first
-            # J += -10 * self.U[5, i]  # battery power severs lod first
+            J += 10 * (self.U[-1, i + 1] - self.U[-1, i]) * (self.U[-1, i + 1] - self.U[-1, i])
             # penalty for conflict
-            # J += 10000 * (self.U[2, i] + self.U[3, i]) * (self.U[4, i] + self.U[5, i])  # charge and discharge
-            # J += 10000 * (self.U[3, i] + self.U[6, i]) * (self.U[4, i] + self.U[0, i])  # buy and sell
-
-            g.append((self.U[2, i] + self.U[3, i]) * (self.U[4, i] + self.U[5, i]))
-            g.append((self.U[3, i] + self.U[6, i]) * (self.U[4, i] + self.U[0, i]))
+            # J += 100000000 * self.U[0, i] * self.U[1, i]  # charge and discharge
+            # J += 100000000 * self.U[2, i] * self.U[3, i]  # buy and sell
+            # constraint for conflict
+            # g.append(self.U[0, i] * self.U[1, i])
+            # g.append(self.U[2, i] * self.U[3, i])
 
             # model equality
             g.append(self.X[:, i] - xn)
             xn = self.env.discrete_model_mpc(self.X[:, i], self.U[:, i + 1], self.UNC[:, i + 1], self.theta_model)
 
             # sys equalities
-            g.append((self.beta * self.A_pv * self.UNC[0, i + 1]) -
-                     (self.U[0, i + 1] + self.U[1, i + 1] + self.U[2, i + 1]))
-            g.append((self.UNC[1, i + 1] + self.U[7, i + 1]) -
-                     (self.U[6, i + 1] + self.U[1, i + 1] + self.U[5, i + 1]))
+            g.append((self.UNC[1, i + 1] + self.U[4, i + 1] + self.U[0, i + 1] + self.U[3, i + 1]) -
+                     (self.U[1, i + 1] + self.U[2, i + 1] + (self.beta * self.A_pv * self.UNC[0, i + 1])))
 
             # sys inequalities
             # 20 + sigma_t_1,2,3 < t_1,2,3 + theta_t_1,2,3 < 60 + sigma_t_1,2,3
@@ -604,29 +576,28 @@ class Custom_QP_formulation:
 
             # input inequalities
             # 0 < p_hp + theta_hp < 3 + sigma_hp
-            hu.append(0 - (self.U[7, i + 1] + self.theta_hp))
-            hu.append((self.U[7, i + 1] + self.theta_hp) - 3)
+            hu.append(0 - (self.U[4, i + 1] + self.theta_hp))
+            hu.append((self.U[4, i + 1] + self.theta_hp) - 3)
             # 0.2 + sigma_xv < xv + theta_xv < 0.8 + sigma_xv
-            hu.append(0.2 - (self.U[8, i + 1] + self.theta_xv))
-            hu.append((self.U[8, i + 1] + self.theta_xv) - 0.8)
+            hu.append(0.2 - (self.U[5, i + 1] + self.theta_xv))
+            hu.append((self.U[5, i + 1] + self.theta_xv) - 0.8)
             # 0 < p_ch + theta_ch < 1 + sigma_ch
-            hu.append(0 - (self.U[2, i + 1] + self.U[3, i + 1] + self.theta_ch_dis[0]))
-            hu.append((self.U[2, i + 1] + self.U[3, i + 1] + self.theta_ch_dis[0]) - 1)
+            hu.append(0 - (self.U[0, i + 1] + self.theta_ch_dis[0]))
+            hu.append((self.U[0, i + 1] + self.theta_ch_dis[0]) - 1)
             # 0 < p_dis + theta_dis < 1 + sigma_dis
-            hu.append(0 - (self.U[4, i + 1] + self.U[5, i + 1] + self.theta_ch_dis[1]))
-            hu.append((self.U[4, i + 1] + self.U[5, i + 1] + self.theta_ch_dis[1]) - 1)
+            hu.append(0 - (self.U[1, i + 1] + self.theta_ch_dis[1]))
+            hu.append((self.U[1, i + 1] + self.theta_ch_dis[1]) - 1)
             # 0 < p_buy + theta_buy < 5 + sigma_buy
-            hu.append(0 - (self.U[3, i + 1] + self.U[6, i + 1] + self.theta_buy_sell[0]))
-            hu.append((self.U[3, i + 1] + self.U[6, i + 1] + self.theta_buy_sell[0]) - 5)
+            hu.append(0 - (self.U[2, i + 1] + self.theta_buy_sell[0]))
+            hu.append((self.U[2, i + 1] + self.theta_buy_sell[0]) - 5)
             # 0 < p_sell + theta_sell < 5 + sigma_sell
-            hu.append(0 - (self.U[0, i + 1] + self.U[4, i + 1] + self.theta_buy_sell[1]))
-            hu.append((self.U[0, i + 1] + self.U[4, i + 1] + self.theta_buy_sell[1]) - 5)
-            hu.append(-self.U[:, i + 1])
+            hu.append(0 - (self.U[3, i + 1] + self.theta_buy_sell[1]))
+            hu.append((self.U[3, i + 1] + self.theta_buy_sell[1]) - 5)
 
         J += self.gamma ** (self.N - 1) * (self.terminal_cost(self.X[:, self.N - 1], self.theta))
 
         g.append(self.X[:, self.N - 1] - xn)
-        hx.append(20 + - (self.X[4, self.N - 1] + self.theta_t[0]))
+        hx.append(20 - (self.X[4, self.N - 1] + self.theta_t[0]))
         hx.append((self.X[4, self.N - 1] + self.theta_t[0]) - 60)
         hx.append(20 - (self.X[5, self.N - 1] + self.theta_t[1]))
         hx.append((self.X[5, self.N - 1] + self.theta_t[1]) - 60)
@@ -648,13 +619,13 @@ class Custom_QP_formulation:
 
         # NLP Problem for value function and policy approximation
         opts_setting = {
-            "ipopt.max_iter": 200,
+            "ipopt.max_iter": 300,
             "ipopt.print_level": 0,
             "print_time": 0,
             "ipopt.mu_target": self.etau,
             "ipopt.mu_init": self.etau,
-            "ipopt.acceptable_tol": 1e-5,
-            "ipopt.acceptable_obj_change_tol": 1e-5,
+            "ipopt.acceptable_tol": 1e-7,
+            "ipopt.acceptable_obj_change_tol": 1e-7,
         }
         vnlp_prob = {
             "f": J,
@@ -667,7 +638,7 @@ class Custom_QP_formulation:
         # self.dR_sensfunc = self.build_sensitivity(J, G, Hu, Hx)
 
     def stage_cost_fn(self):
-        l_spo = self.price_buy * (self.u[3] + self.u[6]) - self.price_sell * (self.u[0] + self.u[4])
+        l_spo = self.price_buy * self.u[2] - self.price_sell * self.u[3]
         # cop = self.theta_cop ** 2 * (4 - 0.088 * self.t_out - 0.079 * (0.5 * (self.x[5] + self.x[6])) + 7.253)
         # l_spo += cop
         l_tem = self.env.c_low * (self.x[1] - 23) * (self.x[1] - 27) + self.env.c_low * 4
@@ -678,7 +649,7 @@ class Custom_QP_formulation:
         return stage_cost_fn
 
     def terminal_cost_fn(self):
-        terminal_cost = 400 * (self.x[7] - 3) ** 2
+        terminal_cost = 300 * (self.x[7] - 3) ** 2
         terminal_cost_fn = csd.Function("stage_cost_fn", [self.x, self.theta], [terminal_cost])
         return terminal_cost_fn
 
@@ -740,7 +711,7 @@ class Custom_MPCActor(Custom_QP_formulation):
 #################
 if __name__ == "__main__":
     SafeRL_path = os.path.abspath(os.path.join(os.getcwd(), '..'))
-    params_path = os.path.join(SafeRL_path, 'Settings/other/smarthome_rl_mpc_lstd.json')
+    params_path = os.path.join(SafeRL_path, 'Settings/other/smarthome_mpc.json')
     with open(params_path, 'r') as f:
         params = json.load(f)
         print(f'params = {params})')
@@ -757,6 +728,7 @@ if __name__ == "__main__":
     data_set = np.concatenate((states, actions, l_spos, l_tems, rewards, rollout_returns))  # stacked vertically
 
     ### save data
-    save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result.csv')
+    # save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_noise.csv')
+    save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_test.csv')
     save_data(data_set, save_path)
     print('Simulation finished, results have been saved.')
