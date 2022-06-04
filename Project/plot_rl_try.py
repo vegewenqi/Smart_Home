@@ -43,6 +43,5 @@ class Plotter:
 
 
 if __name__ == '__main__':
-    Plotter = Plotter('Results/SmartHome/results_rl_try.pkl', 'Results/SmartHome/results_rl_fig_2_try.png')
-    # Plotter = Plotter('Results/Paper/Exp_2.pkl', 'Results/SmartHome/results_rl_fig_2_try.png')
+    Plotter = Plotter('Results/SmartHome/results_rl_try.pkl', 'Results/SmartHome/results_rl_fig_try.png')
     Plotter.plot()
