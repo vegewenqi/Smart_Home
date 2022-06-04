@@ -1,46 +1,25 @@
 import numpy as np
-
+import pandas as pd
 from helpers import tqdm_context
 from Agents.abstract_agent import TrainableController
 
 
 def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
     state = env.reset()
-    # once execute rollout_sample，run env.reset(), reset state and t
     rollout_return = 0
-    rendering = True if mode == "final" and env.supports_rendering else False
-    if rendering:
-        env.prepare_for_render()
 
-    # get action, env.step, buffer.push
     for step in tqdm_context(range(n_step), desc="Episode", pos=1):
-        print(f'step {step}-------------')
-        action, add_info = agent.get_action(state, mode=mode)
-        next_state, reward, done, power_info = env.step(action)
-        add_info['power_info'] = power_info  # extra power info for the house4pumps project
+        # print(f'evaluation step {step}-------------')
+        action, add_info = agent.get_action(state, time=env.t, mode=mode)
+        next_state, reward, done = env.step(action)
 
-        if mode == "train" or "mpc":
-            # replay_buffer.push(state.cat, action.cat, reward, next_state.cat, done, add_info)
-            ### pickle can't save DMStruct!!! save for plot when mode="mpc"
-            replay_buffer.push(state, action, reward, next_state, done, add_info)
-
-            ### debug
-            # print(f'state = {state.cat}, \n'
-            #       f'action = {action.cat}, \n'
-            #       f'reward = {reward}, \n'
-            #       f'next_state = {next_state.cat}')
+        # if mode == "train" or mode == "mpc":
+        #     replay_buffer.push(state, action, reward, next_state, done, add_info)
 
         rollout_return += reward
 
-        if rendering:
-            env.render()
-            print(state, next_state, action, reward, done)
-
         # state = next_state.copy()
         state = next_state
-
-    if rendering:
-        env.end_render()
 
     return rollout_return
 
@@ -57,6 +36,7 @@ def train_controller(agent, replay_buffer):
         # )
         train_it = agent.iterations
         if len(replay_buffer) > agent.batch_size:
+            print('train')
             agent.train(replay_buffer, train_it)
 
 

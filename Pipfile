@@ -11,6 +11,8 @@ tqdm = "*"
 gym = "*"
 matplotlib = "*"
 odfpy = "*"
+torch = "*"
+seaborn = "*"
 
 [dev-packages]
 

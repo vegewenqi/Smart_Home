@@ -16,7 +16,7 @@ def read_data(data_path):
 
 def plot_data(data, state_dim, action_dim, n_step):
     state_label = ["T_w", "T_in", "T_g", "T_p", "T_1", "T_2", "T_3", "E"]
-    action_label = ["P_ch", "P_dis", "P_buy", "P_sell", "P_hp", "X_v", "P_pv", "P_app"]
+    action_label = ["P_ch", "P_dis", "P_buy", "P_sell", "P_hp", "X_v", "P_pv", "P_app", "Price"]
     state = data[:state_dim, :]   # e.g. 8*2880
     action = data[state_dim:state_dim + action_dim, :]
     lspo = data[state_dim + action_dim:state_dim + action_dim + 1, :]
@@ -63,6 +63,7 @@ if __name__ == "__main__":
     ### read data and plot
     SafeRL_path = os.path.abspath(os.path.join(os.getcwd(), '..'))
     # save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_no_noise.csv')
-    save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_noise.csv')
+    # save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_noise.csv')
+    save_path = os.path.join(SafeRL_path, 'Project/Results/SmartHome/result_mpc_test.csv')
     data = read_data(save_path)
-    plot_data(data, state_dim=8, action_dim=6+2, n_step=96)
+    plot_data(data, state_dim=8, action_dim=6+3, n_step=96)

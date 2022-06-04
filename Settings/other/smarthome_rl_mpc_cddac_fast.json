@@ -1,0 +1,34 @@
+{
+    "env": "smart_home",
+    "env_params": {
+        "model_noise_level": 2,
+        "unc_noise_level": 2,
+        "epsilon_rad_sigma": 0.0001,
+        "epsilon_out_sigma": 0.1,
+        "epsilon_app_sigma": 0.01,
+        "epsilon_1234_sigma": 0.1,
+        "c_low": 5,
+        "c_hig": 5,
+        "dt": 900},
+
+    "agent": "SmartHome_RLMPC_CDDAC_FAST",
+    "agent_params":{
+        "cost_params":{"cost_defn": "custom"},
+        "eps": 0.2,
+        "gamma": 0.99,
+        "actor_lr": 0.001,
+        "nu_lr": 0.00001,
+        "vi_lr": 0.00001,
+        "omega_lr": 0.00001,
+        "policy_delay": 5,
+        "mpc_horizon": 6,
+        "train_params":{"iterations": 5,
+                        "batch_size": 100},
+        "debug": false},
+
+    "eval_delay": 10,
+    "epi_length": 96,
+    "n_iterations": 9,
+    "n_evals": 1,
+    "buffer_maxlen": 10000
+}

@@ -6,8 +6,9 @@ from replay_buffer import BasicBuffer
 from helpers import tqdm_context
 
 
-class Smart_Home_MPCAgent:
+class Smart_Home_MPCAgent(TrainableController):
     def __init__(self, env, agent_params):
+        super(Smart_Home_MPCAgent, self).__init__(env=env)
         self.env = env
         self.obs_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]
@@ -16,18 +17,44 @@ class Smart_Home_MPCAgent:
         self._parse_agent_params(**agent_params)
 
         # Actor initialization
-        self.actor = Custom_MPCActor(self.env, self.h, self.cost_params, self.gamma)
+        self.actor = Custom_MPCActor(self.env, self.mpc_horizon, self.cost_params, self.gamma, self.debug)
 
-        # Critic params
-        self.n_sfeature = int(2 * self.obs_dim + 1)
-        self.critic_wt = 0.01 * np.random.rand(self.n_sfeature, 1)
-        self.adv_wt = 0.01 * np.random.rand(self.actor.actor_wt.shape[0], 1)
+        ### Critic params initialization
+        # dim_sfeature = int(2 * self.obs_dim + 1)
+        dim_sfeature = int((self.obs_dim + 2) * (self.obs_dim + 1) / 2)  ### if consider cross terms, use this formula
+        # self.vi = 0.01 * np.random.randn(dim_sfeature, 1)
+        # self.omega = 0.01 * np.random.randn(self.actor.actor_wt.shape[0], 1)
+        # self.nu = 0.01 * np.random.randn(self.actor.actor_wt.shape[0], 1)
+        self.vi = np.zeros((dim_sfeature, 1))
+        self.omega = np.zeros((self.actor.actor_wt.shape[0], 1))
+        self.nu = 0.01 * np.ones((self.actor.actor_wt.shape[0], 1))
+        self.adam_m = 0
+        self.adam_n = 0
 
-        # Render prep
+        self.num_policy_update = 0
+
+        self.theta_bound = np.concatenate((-np.ones(4) * np.inf, np.array([0, -np.inf, -np.inf]),
+                                           np.zeros(2), -np.ones(10) * np.inf))
+
+        ### Render prep
         self.fig = None
         self.ax = None
 
-    # e.g., s1^2+s2^2+s1s2+s1+s2+1
+    def _parse_agent_params(self, cost_params, eps, gamma, actor_lr, nu_lr, vi_lr, omega_lr, policy_delay,
+                            mpc_horizon, debug, train_params):
+        self.cost_params = cost_params
+        self.eps = eps
+        self.gamma = gamma
+        self.actor_lr = actor_lr
+        self.nu_lr = nu_lr
+        self.vi_lr = vi_lr
+        self.omega_lr = omega_lr
+        self.policy_delay = policy_delay
+        self.mpc_horizon = mpc_horizon
+        self.debug = debug
+        self.iterations = train_params["iterations"]
+        self.batch_size = train_params["batch_size"]
+
     def state_to_feature(self, state):
         SS = np.triu(np.outer(state, state))
         size = state.shape[0]
@@ -38,126 +65,84 @@ class Smart_Home_MPCAgent:
         phi_s = np.concatenate((phi_s, state, 1.0), axis=None)[:, None]
         return phi_s
 
-    # return state value function V(s)
-    def get_value(self, state):
-        phi_S = self.state_to_feature(state)
-        V = phi_S.dot(self.critic_wt)[0]
+    def get_V_value(self, phi_s):
+        V = np.matmul(phi_s.T, self.vi)
         return V
 
-    # return action value function Q(s,a)
-    # actually not in use
-    # def get_Q_value(self, state, act):
-    #     S = self.state_to_feature(state)
-    #     pi_act, soln = self.get_action(state, self.actor.actor_wt, mode="update")
-    #     jacob_pi_act = self.actor.dPidP(state, self.actor.actor_wt, soln)
-    #     psi = np.matmul(jacob_pi_act.T, (act - pi_act)[:, None])
-    #     Q = np.matmul(psi.T, self.adv_wt)[0] + S.dot(self.critic_wt)[0]
-    #     return Q
+    def state_action_to_feature(self, action, pi, dpi_dtheta):
+        phi_sa = np.matmul(dpi_dtheta, (action - pi))
+        return phi_sa
 
-    # return act, info
-    def get_action(self, state, act_wt=None, time=None, mode="train"):
-        eps = self.eps if mode == "train" else 0.0
-        act, info = self.actor.act_forward(state, act_wt=act_wt, time=None, mode=mode)  # act_wt = self.actor.actor_wt
-        act += eps * (np.random.rand(self.action_dim))  # the added noise should de changed
-        act = act.clip(self.env.action_space.low, self.env.action_space.high)
+    def get_Q_value(self, phi_sa, V):
+        Q = np.matmul(phi_sa.T, self.omega) + V
+        return Q
+
+    def get_action(self, state, act_wt=None, time=None, mode=None):
+        pi, info = self.actor.act_forward(state, act_wt=act_wt, time=time, mode=mode)  # act_wt = self.actor.actor_wt
+        if mode == "train":
+            info['pi'] = pi
+            act = pi + self.eps * (-0.5 + np.random.rand(self.action_dim)) * [1, 1, 5, 5, 3, 1]
+            act = act.clip(self.env.action_space.low, self.env.action_space.high)
+            # calculate features and save those info
+            phi_s = self.state_to_feature(state.squeeze())
+            dpi_dtheta_s = self.actor.dPidP(state, info['act_wt'], info)
+            phi_sa = self.state_action_to_feature(act[:, None], pi[:, None], dpi_dtheta_s)
+            info['phi_s'] = phi_s
+            info['phi_sa'] = phi_sa
+            info["dpi_dtheta_s"] = dpi_dtheta_s
+        else:  # mode == "eval" or "mpc"
+            act = pi
         return act, info
 
     def train(self, replay_buffer, train_it):
-        # Critic param update
-        Av = np.zeros(shape=(self.critic_wt.shape[0], self.critic_wt.shape[0]))
-        bv = np.zeros(shape=(self.critic_wt.shape[0], 1))
-        for _ in tqdm_context(range(train_it), desc="Training Iterations"):
-            states, actions, rewards, next_states, dones, infos = replay_buffer.sample(
-                self.batch_size)
-
+        delta_dpidpi = 0
+        for train_i in tqdm_context(range(train_it), desc="Training Iterations"):
+            # print(f'batch training iteration {train_i}')
+            states, actions, rewards, next_states, dones, infos = replay_buffer.sample(self.batch_size)
+            delta_nu = 0
+            delta_vi = 0
+            delta_omega = 0
             for j, s in enumerate(states):
-                S = self.state_to_feature(s)[:, None]
-                temp = (
-                        S
-                        - (1 - dones[j])
-                        * self.gamma
-                        * self.state_to_feature(next_states[j])[:, None]
-                )
-                Av += np.matmul(S, temp.T)
-                bv += rewards[j] * S
-        # update self.critic_wt
-        self.critic_wt = np.linalg.solve(Av, bv)
+                phi_s = infos[j]["phi_s"]
+                phi_sa = infos[j]["phi_sa"]
+                phi_ns = infos[j]["phi_ns"]
+                dpi_dtheta_s = infos[j]["dpi_dtheta_s"]
+                V_s = self.get_V_value(phi_s)
+                Q_sa = self.get_Q_value(phi_sa, V_s)
+                V_ns = self.get_V_value(phi_ns)
 
-        # Advantage fn param update
-        Aq = np.zeros(shape=(self.adv_wt.shape[0], self.adv_wt.shape[0]))
-        bq = np.zeros(shape=(self.adv_wt.shape[0], 1))
-        G = np.zeros(shape=(self.adv_wt.shape[0], self.adv_wt.shape[0]))
-        for _ in tqdm_context(range(train_it), desc="Training Iterations"):
-            states, actions, rewards, next_states, dones, infos = replay_buffer.sample(
-                self.batch_size)
+                td_error = rewards[j] + self.gamma * V_ns - Q_sa
+                delta_nu += ((td_error - np.matmul(phi_sa.T, self.nu)) * phi_sa) / self.batch_size
+                delta_vi += (td_error * phi_s - self.gamma * np.matmul(phi_sa.T, self.nu) * phi_ns) / self.batch_size
+                delta_omega += (td_error * phi_sa) / self.batch_size
+                # delta_vi += (td_error * phi_s) / self.batch_size
+                # delta_omega += (td_error * phi_sa) / self.batch_size
+                delta_dpidpi += np.matmul(dpi_dtheta_s, dpi_dtheta_s.T)
 
-            for j, s in enumerate(states):
-                if self.experience_replay:
-                    self.env.t = infos[j]["time"]
-                    pi_act, info = self.get_action(
-                        s, self.actor.actor_wt, mode="update"
-                    )
-                else:
-                    info = infos[j]
-                    soln = info["soln"]
-                    pi_act = soln["x"].full()[: self.action_dim][:, 0]
-                jacob_pi = self.actor.dPidP(
-                    s, self.actor.actor_wt, info
-                )  # jacob:[n_a, n_sfeature*n_a]
-                psi = np.matmul(
-                    jacob_pi.T, (actions[j] - pi_act)[:, None]
-                )  # psi: [n_sfeature*n_a, 1]
+            # print(f'update critic')
+            self.nu = self.nu + self.nu_lr * delta_nu
+            self.vi = self.vi + self.vi_lr * delta_vi
+            self.omega = self.omega + self.omega_lr * delta_omega
+            # print(f'self.nu = {self.nu.squeeze()}')
+            # print(f'td_error = {td_error}')
+            # print(f'self.vi = {self.vi.squeeze()}')
+            # print(f'self.omega = {self.omega.squeeze()}')
 
-                Aq += np.matmul(psi, psi.T)
-                bq += psi * (
-                        rewards[j]
-                        + (1 - dones[j]) * self.gamma * self.get_value(next_states[j])
-                        - self.get_value(s)
-                )
-                G += np.matmul(jacob_pi.T, jacob_pi)
-
-        if np.linalg.det(Aq) != 0.0:
-            # update self.adv_wt
-            self.adv_wt = np.linalg.solve(Aq, bq)
-
-            # Policy param update
-            # update self.actor.actor_wt
-            if self.constrained_updates:
-                self.actor.actor_wt = self.actor.param_update(
-                    self.actor_lr / self.batch_size,
-                    np.matmul(G, self.adv_wt),
-                    self.actor.actor_wt,
-                )
-            else:
-                self.actor.actor_wt -= (self.actor_lr / self.batch_size) * np.matmul(
-                    G, self.adv_wt
-                )
-            print("params updated")
-
-        print(self.actor.actor_wt)
-
-    def _parse_agent_params(
-            self,
-            cost_params,
-            eps,
-            gamma,
-            actor_lr,
-            horizon,
-            debug,
-            train_params,
-            constrained_updates=True,
-            experience_replay=False,
-    ):
-        self.cost_params = cost_params
-        self.eps = eps
-        self.gamma = gamma
-        self.actor_lr = actor_lr
-        self.h = horizon
-        self.constrained_updates = constrained_updates
-        self.experience_replay = experience_replay
-        self.debug = debug
-        self.iterations = train_params["iterations"]
-        self.batch_size = train_params["batch_size"]
+            if (train_i+1) % self.policy_delay == 0:
+                # print(f'update actor')
+                dpi_dpidpi_avg = delta_dpidpi / ((train_i+1) * self.batch_size)
+                delta_theta = np.matmul(dpi_dpidpi_avg, self.omega)
+                delta_dpidpi = 0
+                self.num_policy_update += 1
+                # Adam
+                self.adam_m = 0.9 * self.adam_m + (1-0.9) * delta_theta
+                m_hat = self.adam_m / (1-0.9**self.num_policy_update)
+                self.adam_n = 0.999 * self.adam_n + (1-0.999) * delta_theta**2
+                n_hat = self.adam_n / (1-0.999**self.num_policy_update)
+                new_theta = self.actor.actor_wt - self.actor_lr * (m_hat / (np.sqrt(n_hat)+10**(-8)))
+                self.actor.actor_wt = np.maximum(new_theta.squeeze(), self.theta_bound)[:, None]
+                print(f'self.actor.actor_wt = {self.actor.actor_wt.squeeze()}')
+        # print('hi')
 
 
 class Custom_QP_formulation:
@@ -232,36 +217,34 @@ class Custom_QP_formulation:
         self.dPi = None
         self.dLagV = None
 
-        # Optimization formulation with sensitivity (symbolic)
         self.opt_formulation()
 
     def opt_formulation(self):
-        # Optimization cost and associated constraints
         J = 0
-        W = np.ones((1, self.sigma_dim))
-        g = []  # Equality constraints
-        hx = []  # Box constraints on states
-        hu = []  # Box constraints on inputs
-        hsg = []  # Box constraints on sigma
+        W = np.ones((1, self.sigma_dim)) * [1, 1, 1, 10, 100, 1, 10, 10, 10, 10]
+        g = []
+        hx = []
+        hu = []
+        hsg = []
 
         # input inequalities
         # 0 < p_hp + theta_hp < 3 + sigma_hp
-        hu.append(0 - (self.U[4, 0] + self.theta_hp))
+        hu.append(0 - self.U[4, 0])
         hu.append((self.U[4, 0] + self.theta_hp) - (3 + self.Sigma[3, 0]))
         # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-        hu.append((0.2 + self.Sigma[4, 0]) - (self.U[5, 0] + self.theta_xv))
-        hu.append((self.U[5, 0] + self.theta_xv) - (0.8 + self.Sigma[4, 0]))
+        hu.append((0.2 - self.Sigma[4, 0]) - (self.U[5, 0] + self.theta_xv))
+        hu.append((self.U[5, 0] - self.theta_xv) - (0.8 + self.Sigma[4, 0]))
         # 0 < p_ch + theta_ch < 1 + sigma_ch
-        hu.append(0 - (self.U[0, 0] + self.theta_ch_dis[0]))
+        hu.append(0 - (self.U[0, 0]))
         hu.append((self.U[0, 0] + self.theta_ch_dis[0]) - (1 + self.Sigma[6, 0]))
         # 0 < p_dis + theta_dis < 1 + sigma_dis
-        hu.append(0 - (self.U[1, 0] + self.theta_ch_dis[1]))
+        hu.append(0 - (self.U[1, 0]))
         hu.append((self.U[1, 0] + self.theta_ch_dis[1]) - (1 + self.Sigma[7, 0]))
         # 0 < p_buy + theta_buy < 5 + sigma_buy
-        hu.append(0 - (self.U[2, 0] + self.theta_buy_sell[0]))
+        hu.append(0 - (self.U[2, 0]))
         hu.append((self.U[2, 0] + self.theta_buy_sell[0]) - (5 + self.Sigma[8, 0]))
         # 0 < p_sell + theta_sell < 5 + sigma_sell
-        hu.append(0 - (self.U[3, 0] + self.theta_buy_sell[1]))
+        hu.append(0 - (self.U[3, 0]))
         hu.append((self.U[3, 0] + self.theta_buy_sell[1]) - (5 + self.Sigma[9, 0]))
 
         # sys equalities: power balance
@@ -285,34 +268,34 @@ class Custom_QP_formulation:
 
             # sys inequalities
             # 20 + sigma_t_1,2,3 < t_1,2,3 + theta_t_1,2,3 < 60 + sigma_t_1,2,3
-            hx.append((20 + self.Sigma[0, i]) - (self.X[4, i] + self.theta_t[0]))
-            hx.append((self.X[4, i] + self.theta_t[0]) - (60 + self.Sigma[0, i]))
-            hx.append((20 + self.Sigma[1, i]) - (self.X[5, i] + self.theta_t[1]))
-            hx.append((self.X[5, i] + self.theta_t[1]) - (60 + self.Sigma[1, i]))
-            hx.append((20 + self.Sigma[2, i]) - (self.X[6, i] + self.theta_t[2]))
-            hx.append((self.X[6, i] + self.theta_t[2]) - (60 + self.Sigma[2, i]))
+            hx.append((20 - self.Sigma[0, i]) - (self.X[4, i] + self.theta_t[0]))
+            hx.append((self.X[4, i] - self.theta_t[0]) - (60 + self.Sigma[0, i]))
+            hx.append((20 - self.Sigma[1, i]) - (self.X[5, i] + self.theta_t[1]))
+            hx.append((self.X[5, i] - self.theta_t[1]) - (60 + self.Sigma[1, i]))
+            hx.append((20 - self.Sigma[2, i]) - (self.X[6, i] + self.theta_t[2]))
+            hx.append((self.X[6, i] - self.theta_t[2]) - (60 + self.Sigma[2, i]))
             # 1 + sigma_e < e + theta_e< 4 + sigma_e
-            hx.append((1 + self.Sigma[5, i]) - (self.X[7, i] + self.theta_e))
-            hx.append((self.X[7, i] + self.theta_e) - (4 + self.Sigma[5, i]))
+            hx.append((1 - self.Sigma[5, i]) - (self.X[7, i] + self.theta_e))
+            hx.append((self.X[7, i] - self.theta_e) - (4 + self.Sigma[5, i]))
 
             # input inequalities
             # 0 < p_hp + theta_hp < 3 + sigma_hp
-            hu.append(0 - (self.U[4, i + 1] + self.theta_hp))
+            hu.append(0 - (self.U[4, i + 1]))
             hu.append((self.U[4, i + 1] + self.theta_hp) - (3 + self.Sigma[3, i + 1]))
             # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-            hu.append((0.2 + self.Sigma[4, i + 1]) - (self.U[5, i + 1] + self.theta_xv))
-            hu.append((self.U[5, i + 1] + self.theta_xv) - (0.8 + self.Sigma[4, i + 1]))
+            hu.append((0.2 - self.Sigma[4, i + 1]) - (self.U[5, i + 1] + self.theta_xv))
+            hu.append((self.U[5, i + 1] - self.theta_xv) - (0.8 + self.Sigma[4, i + 1]))
             # 0 < p_ch + theta_ch < 1 + sigma_ch
-            hu.append(0 - (self.U[0, i + 1] + self.theta_ch_dis[0]))
+            hu.append(0 - (self.U[0, i + 1]))
             hu.append((self.U[0, i + 1] + self.theta_ch_dis[0]) - (1 + self.Sigma[6, i + 1]))
             # 0 < p_dis + theta_dis < 1 + sigma_dis
-            hu.append(0 - (self.U[1, i + 1] + self.theta_ch_dis[1]))
+            hu.append(0 - (self.U[1, i + 1]))
             hu.append((self.U[1, i + 1] + self.theta_ch_dis[1]) - (1 + self.Sigma[7, i + 1]))
             # 0 < p_buy + theta_buy < 5 + sigma_buy
-            hu.append(0 - (self.U[2, i + 1] + self.theta_buy_sell[0]))
+            hu.append(0 - (self.U[2, i + 1]))
             hu.append((self.U[2, i + 1] + self.theta_buy_sell[0]) - (5 + self.Sigma[8, i + 1]))
             # 0 < p_sell + theta_sell < 5 + sigma_sell
-            hu.append(0 - (self.U[3, i + 1] + self.theta_buy_sell[1]))
+            hu.append(0 - (self.U[3, i + 1]))
             hu.append((self.U[3, i + 1] + self.theta_buy_sell[1]) - (5 + self.Sigma[9, i + 1]))
 
             # slack inequalities
@@ -323,26 +306,24 @@ class Custom_QP_formulation:
                 self.terminal_cost(self.X[:, self.N - 1], self.theta) + W @ self.Sigma[:, self.N - 1])
 
         g.append(self.X[:, self.N - 1] - xn)
-        hx.append((20 + self.Sigma[0, self.N - 1]) - (self.X[4, self.N - 1] + self.theta_t[0]))
-        hx.append((self.X[4, self.N - 1] + self.theta_t[0]) - (60 + self.Sigma[0, self.N - 1]))
-        hx.append((20 + self.Sigma[1, self.N - 1]) - (self.X[5, self.N - 1] + self.theta_t[1]))
-        hx.append((self.X[5, self.N - 1] + self.theta_t[1]) - (60 + self.Sigma[1, self.N - 1]))
-        hx.append((20 + self.Sigma[2, self.N - 1]) - (self.X[6, self.N - 1] + self.theta_t[2]))
-        hx.append((self.X[6, self.N - 1] + self.theta_t[2]) - (60 + self.Sigma[2, self.N - 1]))
-        hx.append((1 + self.Sigma[5, self.N - 1]) - (self.X[7, self.N - 1] + self.theta_e))
-        hx.append((self.X[7, self.N - 1] + self.theta_e) - (4 + self.Sigma[5, self.N - 1]))
+        hx.append((20 - self.Sigma[0, self.N - 1]) - (self.X[4, self.N - 1] + self.theta_t[0]))
+        hx.append((self.X[4, self.N - 1] - self.theta_t[0]) - (60 + self.Sigma[0, self.N - 1]))
+        hx.append((20 - self.Sigma[1, self.N - 1]) - (self.X[5, self.N - 1] + self.theta_t[1]))
+        hx.append((self.X[5, self.N - 1] - self.theta_t[1]) - (60 + self.Sigma[1, self.N - 1]))
+        hx.append((20 - self.Sigma[2, self.N - 1]) - (self.X[6, self.N - 1] + self.theta_t[2]))
+        hx.append((self.X[6, self.N - 1] - self.theta_t[2]) - (60 + self.Sigma[2, self.N - 1]))
+        hx.append((1 - self.Sigma[5, self.N - 1]) - (self.X[7, self.N - 1] + self.theta_e))
+        hx.append((self.X[7, self.N - 1] - self.theta_e) - (4 + self.Sigma[5, self.N - 1]))
         for _ in range(self.sigma_dim):
             hsg.append(-self.Sigma[_, self.N - 1])
 
-
         # Constraints
         G = csd.vertcat(*g)
-        Hu = csd.vertcat(*hu)
-        Hx = csd.vertcat(*hx, *hsg)
-        G_vcsd = csd.vertcat(*g, *hu, *hx, *hsg)
+        H = csd.vertcat(*hu, *hx, *hsg)
+        GH_vcsd = csd.vertcat(G, H)
 
-        lbg = [0] * G.shape[0] + [-math.inf] * Hu.shape[0] + [-math.inf] * Hx.shape[0]
-        ubg = [0] * G.shape[0] + [0] * Hu.shape[0] + [0] * Hx.shape[0]
+        lbg = [0] * G.shape[0] + [-math.inf] * H.shape[0]
+        ubg = [0] * G.shape[0] + [0] * H.shape[0]
         self.lbg_vcsd = csd.vertcat(*lbg)
         self.ubg_vcsd = csd.vertcat(*ubg)
 
@@ -360,12 +341,11 @@ class Custom_QP_formulation:
             "f": J,
             "x": self.Opt_Vars,
             "p": self.P,
-            "g": G_vcsd,
+            "g": GH_vcsd,
         }
         self.vsolver = csd.nlpsol("vsolver", "ipopt", vnlp_prob, opts_setting)
         # self.dPi, self.dLagV = self.build_sensitivity(J, G, Hu, Hx)
-        self.dR_sensfunc = self.build_sensitivity(J, G, csd.vcat([Hu, Hx]))
-
+        self.dR_sensfunc = self.build_sensitivity(J, G, H)
 
     def build_sensitivity(self, J, g, h):
         lamb = csd.MX.sym("lamb", g.shape[0])
@@ -381,18 +361,17 @@ class Custom_QP_formulation:
         z = csd.vertcat(self.Opt_Vars, mult)
         R_kkt = csd.Function("R_kkt", [z, self.P], [Rr])
         dR_sensfunc = R_kkt.factory("dR", ["i0", "i1"], ["jac:o0:i0", "jac:o0:i1"])
-
         return dR_sensfunc
 
     def stage_cost_fn(self):
         l_spo = self.price_buy * self.u[2] - self.price_sell * self.u[3]
-        l_tem = self.theta_in[0] ** 2 * (self.x[1] - 23 - self.theta_in[1]) * (self.x[1] - 27 - self.theta_in[2])
+        l_tem = self.theta_in[0] * (self.x[1] - 23 - self.theta_in[1]) * (self.x[1] - 27 - self.theta_in[2])
         stage_cost = l_tem + l_spo
         stage_cost_fn = csd.Function("stage_cost_fn", [self.x, self.u, self.theta, self.price], [stage_cost])
         return stage_cost_fn
 
     def terminal_cost_fn(self):
-        terminal_cost = self.theta_en[0] ** 2 * (self.x[7] - self.theta_en[1]) ** 2
+        terminal_cost = self.theta_en[0] * (self.x[7] - self.theta_en[1]) ** 2
         terminal_cost_fn = csd.Function("stage_cost_fn", [self.x, self.theta], [terminal_cost])
         return terminal_cost_fn
 
@@ -402,13 +381,15 @@ class Custom_MPCActor(Custom_QP_formulation):
         upper_tri = cost_params["upper_tri"] if "upper_tri" in cost_params else False
         super().__init__(env, mpc_horizon, gamma, cost_params["cost_defn"], upper_tri)
         self.debug = debug
+
         self.p_val = np.zeros((self.p_dim, 1))
 
-        self.actor_wt = np.array(cost_params["cost_wt"]) if "cost_wt" in cost_params \
-            else 0.01 * np.random.rand(self.theta_dim, 1)
+        self.actor_wt = np.concatenate((
+            np.zeros(4),
+            np.array([5, 0, 0]),
+            np.array([300, 3]),
+            np.zeros(10)), axis=None)[:, None]
 
-        # Test run
-        # _ = self.act_forward(self.env.reset())
         self.X0 = None
         self.soln = None
         self.info =None
@@ -418,12 +399,12 @@ class Custom_MPCActor(Custom_QP_formulation):
         time = time if time is not None else self.env.t
 
         self.p_val[: self.obs_dim, 0] = state
-        self.p_val[self.obs_dim:self.obs_dim + self.theta_dim, :] = act_wt
+        self.p_val[self.obs_dim:self.obs_dim+self.theta_dim, :] = act_wt
 
-        self.p_val[self.obs_dim + self.theta_dim:self.obs_dim + self.theta_dim + self.UNC_dim, :] = \
-            np.reshape(self.env.uncertainty[:, time:time + self.N], (-1, 1), order='F')
-        self.p_val[self.obs_dim + self.theta_dim + self.UNC_dim:, :] = \
-            np.reshape(self.env.price[:, time:time + self.N], (-1, 1), order='F')
+        self.p_val[self.obs_dim+self.theta_dim:self.obs_dim+self.theta_dim+self.UNC_dim, :] = \
+            np.reshape(self.env.uncertainty[:, time:time+self.N], (-1, 1), order='F')
+        self.p_val[self.obs_dim+self.theta_dim+self.UNC_dim:, :] =\
+            np.reshape(self.env.price[:, time:time+self.N], (-1, 1), order='F')
         # order='F' reshape the matrix by column
 
         self.X0 = 0.01 * np.ones((self.obs_dim + self.action_dim + self.sigma_dim) * self.N)

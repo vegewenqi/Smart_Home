@@ -297,19 +297,16 @@ class SmartHome(Env):
 
     def step(self, action):
         # real sys uncertainty = baseline estimate data + noises
-        self.state = self.discrete_model_real(
-            self.state,
-            action,
-            self.uncertainty[:, self.t]
-            + np.array([np.random.normal(0, self.epsilon_rad_sigma),
-                        np.random.normal(0, self.epsilon_app_sigma),
-                        np.random.normal(0, self.epsilon_out_sigma)]))
-        self.state = self.state.clip(
-            self.observation_space.low, self.observation_space.high
-        )
-        rew, done = self.reward_fn(self.state, action, self.price[:, self.t])
+        unc_t = self.uncertainty[:, self.t] + np.array([np.random.normal(0, self.epsilon_rad_sigma),
+                                                        np.random.normal(0, self.epsilon_app_sigma),
+                                                        np.random.normal(0, self.epsilon_out_sigma)])
+
+        self.state = self.discrete_model_real(self.state, action, unc_t)
+
+        self.state = self.state.clip(self.observation_space.low, self.observation_space.high)
+        rew, done, l_spo, l_temp = self.reward_fn(self.state, action, self.price[:, self.t])
         self.t += 1
-        return self.state, rew, done
+        return self.state, rew, done, l_spo, l_temp, unc_t
 
     # return r, done
     def reward_fn(self, state, action, price):
@@ -338,7 +335,7 @@ class SmartHome(Env):
         r = l_spo + l_temp
 
         done = 0
-        return r, done
+        return r, done, l_spo, l_temp
 
     # not in use
     def cost_fn(self, state, action, next_state):
