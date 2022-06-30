@@ -9,9 +9,10 @@ class Env(gym.Env, ABC):
     goal_mask = None
     supports_rendering = False
 
-    def __init__(self, *, name, **kwargs):
-        self.name = name
-        super().__init__(**kwargs)
+    def __init__(self, env_str: str):
+        self.env_str = env_str
+        self.state = None
+        super().__init__()
 
     @abstractmethod
     def cost_fn(self, state, action, next_state):
@@ -38,7 +39,7 @@ class Agent(ABC):
     required_settings = []
 
     # noinspection PyUnusedLocal
-    def __init__(self, *, env: Env):
+    def __init__(self, env: Env):
         self.env = env
 
     @abstractmethod

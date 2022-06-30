@@ -19,7 +19,7 @@
         "vi_lr": 0.000003,
         "omega_lr": 0.000003,
         "policy_delay": 5,
-        "mpc_horizon": 6,
+        "mpc_horizon": 24,
         "train_params":{"iterations": 5,
                         "batch_size": 100},
         "debug": false},

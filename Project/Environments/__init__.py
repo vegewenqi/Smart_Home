@@ -1,8 +1,8 @@
 from importlib import import_module
 
 
-def env_init(env_str, env_params={}):
-    return EnvFactory(env_str, env_params)
+def env_init(env_str, env_params, seed):
+    return EnvFactory(env_str, env_params, seed)
 
 
 class EnvFactory:
@@ -17,12 +17,12 @@ class EnvFactory:
     modified_envs = ["point_mass", "motor_model", "smart_home", "house_4pumps", "smart_home_plot"]
     env = None
 
-    def __new__(cls, env_str, env_params):
+    def __new__(cls, env_str, env_params, seed):
         if env_str in cls.valid_envs:
             env_package, env_class = cls.valid_envs[env_str]
             if env_str in cls.modified_envs:
                 module = import_module(env_package, "Environments")
-                cls.env = getattr(module, env_class)(env_params)
+                cls.env = getattr(module, env_class)(env_str, env_params, seed)
             elif env_package == "gym":
                 import gym
 

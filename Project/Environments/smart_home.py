@@ -10,8 +10,9 @@ import os
 
 
 class SmartHome(Env):
-    def __init__(self, env_params={}):
+    def __init__(self, env_str, env_params, seed):
         # state box, dimension of 8
+        super().__init__(env_str)
         self.observation_space = Box(
             low=np.array([0, 0, 0, 0, 10, 10, 10, 0]),
             high=np.array([100, 100, 100, 100, 70, 70, 70, 5], dtype=np.float32),
@@ -33,9 +34,8 @@ class SmartHome(Env):
         self.dt = env_params["dt"]  # dt=900s=15min
 
         # uncertainty and price
-        SafeRL_path = os.path.abspath(os.path.join(os.getcwd(), '..'))
-
-        data_path = os.path.join(SafeRL_path, 'Data/SmartHome/smart_home_uncertainties.ods')
+        project_path = os.path.abspath(os.getcwd())
+        data_path = os.path.join(project_path, 'Data/SmartHome/smart_home_uncertainties.ods')
         data = pd.read_excel(data_path, dtype=float)
         self.uncertainty = np.concatenate(
             [
@@ -48,7 +48,7 @@ class SmartHome(Env):
         self.uncertainty = np.repeat(self.uncertainty, 4, axis=1)
         # print(self.uncertainty.shape)
 
-        data_path = os.path.join(SafeRL_path, 'Data/SmartHome/smart_home_prices.ods')
+        data_path = os.path.join(project_path, 'Data/SmartHome/smart_home_prices.ods')
         data = pd.read_excel(data_path, dtype=float)
         self.price = np.concatenate(
             [
@@ -285,8 +285,8 @@ class SmartHome(Env):
         # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
         #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         # ) * (np.random.normal(scale=1, size=8))
-        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
-            [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
+        self.state = np.array([15.0, 25.0, 15.0, 27.0, 38.0, 50.0, 16.0, 2.0]) + 0.1 * np.array(
+            [1.0, 0.05, 1.0, 1.0, 1.0, 0.1, 1.0, 0.1]
         ) * (np.random.normal(scale=1, size=8))
 
         self.state = self.state.clip(
@@ -304,9 +304,9 @@ class SmartHome(Env):
             + np.array([np.random.normal(0, self.epsilon_rad_sigma),
                         np.random.normal(0, self.epsilon_app_sigma),
                         np.random.normal(0, self.epsilon_out_sigma)]))
-        self.state = self.state.clip(
-            self.observation_space.low, self.observation_space.high
-        )
+        # self.state = self.state.clip(
+        #     self.observation_space.low, self.observation_space.high
+        # )
         rew, done = self.reward_fn(self.state, action, self.price[:, self.t])
         self.t += 1
         return self.state, rew, done

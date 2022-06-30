@@ -16,7 +16,7 @@ import pickle
 #     params = json.load(f)
 #     print(params)
 
-json_path = os.path.abspath(os.path.join(os.getcwd(), '../Settings/other/smarthome_rl_mpc_cddac_fast_try.json'))
+json_path = os.path.abspath(os.path.join(os.getcwd(), 'Settings/other/smarthome_rl_mpc_cddac_fast_try.json'))
 with open(json_path, 'r') as f:
     params = json.load(f)
     params["env_params"]["json_path"] = json_path

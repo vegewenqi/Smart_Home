@@ -21,20 +21,20 @@ def redirect_stdout__to_tqdm():
 
 
 def tqdm_context(*args, **kwargs):
-    # with redirect_stdout__to_tqdm():
-    #     postfix_dict = kwargs.pop("postfix_dict", {})
-    #     additional_info_flag = kwargs.pop("additional_info_flag", False)
-    #     position = kwargs.pop("pos", 0)
-    #     kwargs.update({"position": position})
-    #     kwargs.update({"leave": False})
+    with redirect_stdout__to_tqdm():
+        postfix_dict = kwargs.pop("postfix_dict", {})
+        additional_info_flag = kwargs.pop("additional_info_flag", False)
+        position = kwargs.pop("pos", 0)
+        kwargs.update({"position": position})
+        kwargs.update({"leave": False})
 
-    #     t_main = tqdm.tqdm(*args, **kwargs)
-    #     t_main.postfix_dict = postfix_dict
-    #     if additional_info_flag:
-    #         yield t_main
-    #     for x in t_main:
-    #         t_main.set_postfix(**t_main.postfix_dict)
-    #         t_main.refresh()
-    #         yield x
-    it = args[0]
-    return it
+        t_main = tqdm.tqdm(*args, **kwargs)
+        t_main.postfix_dict = postfix_dict
+        if additional_info_flag:
+            yield t_main
+        for x in t_main:
+            t_main.set_postfix(**t_main.postfix_dict)
+            t_main.refresh()
+            yield x
+    # it = args[0]
+    # return it

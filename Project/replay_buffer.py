@@ -4,12 +4,16 @@ from collections import deque
 
 
 class BasicBuffer:
-    def __init__(self, max_size):
+    def __init__(self, max_size, seed):
         self.max_size = max_size
+        self.size = 0
         self.buffer = deque(maxlen=max_size)
+        self.rng1 = np.random.default_rng(seed)
+        self.rng2 = random.Random(seed)
 
     def push(self, state, action, reward, next_state, done, info):
         experience = (state, action, np.array([reward]), next_state, done, info)
+        self.size = min(self.size+1, self.max_size)
         self.buffer.append(experience)
 
     def sample(self, batch_size):

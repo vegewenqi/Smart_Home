@@ -1,4 +1,3 @@
-import numpy as np
 from abc import ABC, abstractmethod
 
 from base_types import Agent, Env
@@ -9,12 +8,12 @@ class TrainableController(Agent, ABC):
     needs_training = True
     needs_data = True
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, env):
+        super().__init__(env)
         self.cost_fn = self.env.cost_fn
 
     @abstractmethod
-    def train(self, replay_buffer: BasicBuffer, train_iteration):
+    def train(self, replay_buffer: BasicBuffer):
         """
         Trains the controller from experience
         """

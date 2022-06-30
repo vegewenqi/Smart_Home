@@ -371,7 +371,7 @@ class Custom_QP_formulation:
         }
         self.vsolver = csd.nlpsol("vsolver", "ipopt", vnlp_prob, opts_setting)
         # self.dPi, self.dLagV = self.build_sensitivity(J, G, Hu, Hx)
-        self.dR_sensfunc = self.build_sensitivity(J, G, H)
+        self.dR_sensfunc, self.dPi = self.build_sensitivity(J, G, H)
 
     def build_sensitivity(self, J, g, h):
         lamb = csd.MX.sym("lamb", g.shape[0])
@@ -387,7 +387,12 @@ class Custom_QP_formulation:
         z = csd.vertcat(self.Opt_Vars, mult)
         R_kkt = csd.Function("R_kkt", [z, self.P], [Rr])
         dR_sensfunc = R_kkt.factory("dR", ["i0", "i1"], ["jac:o0:i0", "jac:o0:i1"])
-        return dR_sensfunc
+
+        [dRdz, dRdP] = dR_sensfunc(z, self.P)
+        dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim]
+        dPi = csd.Function("dPi", [z, self.P], [dzdP[:self.action_dim, :]])
+
+        return dR_sensfunc, dPi
 
     def stage_cost_fn(self):
         l_spo = self.Price[0] * self.u[2] - self.Price[1] * self.u[3]
@@ -474,10 +479,12 @@ class Custom_MPCActor(Custom_QP_formulation):
         self.p_val[self.obs_dim + self.theta_dim + self.UNC_dim:, :] = \
             np.reshape(self.env.price[:, time:time + self.N], (-1, 1), order='F')
 
-        [dRdz, dRdP] = self.dR_sensfunc(z, self.p_val)
-        dzdP = (-np.linalg.solve(dRdz, dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])).T
-        # dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])
-        dpi = dzdP[:, :self.action_dim]
+        # [dRdz, dRdP] = self.dR_sensfunc(z, self.p_val)
+        # dzdP = (-np.linalg.solve(dRdz, dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])).T
+        # # dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])
+        # dpi = dzdP[:, :self.action_dim]
+
+        dpi = self.dPi(z, self.p_val).full().T
         return dpi
 
     def param_update(self, lr, dJ, act_wt):

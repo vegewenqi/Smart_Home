@@ -1,9 +1,9 @@
 from importlib import import_module
 
 
-def agent_init(env, agent_str, agent_params):
+def agent_init(env, agent_str, agent_params, seed):
     agent_class = AgentFactory(agent_str=agent_str)
-    agent = agent_class(env, agent_params)
+    agent = agent_class(env, agent_params, seed)
     return agent
 
 
