@@ -6,6 +6,7 @@ from Agents.abstract_agent import TrainableController
 
 def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
     state = env.reset()
+    state = env.extract_state(state)
     rollout_return = 0
 
     for step in tqdm_context(range(n_step), desc="Episode", pos=1):
@@ -20,7 +21,7 @@ def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
 
         # state = next_state.copy()
         state = next_state
-
+        state = env.extract_state(state)
     return rollout_return
 
 

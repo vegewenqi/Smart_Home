@@ -12,21 +12,21 @@
     "agent": "SmartHome_RLMPC_CDDAC_FAST_TRY",
     "agent_params":{
         "cost_params":{"cost_defn": "custom"},
-        "eps": 0.07, 
+        "eps": 0.07,
         "gamma": 0.99,
-        "actor_lr": 0.0003,
-        "nu_lr": 0.000003,
-        "vi_lr": 0.000003,
-        "omega_lr": 0.000003,
+        "actor_lr": 0.0008,
+        "nu_lr": 0.000008,
+        "vi_lr": 0.000008,
+        "omega_lr": 0.000008,
         "policy_delay": 5,
         "mpc_horizon": 6,
         "train_params":{"iterations": 5,
                         "batch_size": 100},
         "debug": false},
 
-    "eval_delay": 10,
+    "eval_delay": 50,
     "epi_length": 96,
     "n_iterations": 30,
     "n_evals": 3,
-    "buffer_maxlen": 100000
+    "buffer_maxlen": 10000
 }

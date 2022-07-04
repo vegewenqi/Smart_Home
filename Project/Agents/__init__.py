@@ -19,7 +19,7 @@ class AgentFactory:
         "House4Pumps_RLMPC_LSTD": [".house_4pumps_rl_mpc_lstd", "House_4Pumps_MPCAgent"],
         "SmartHome_RLMPC_CDDAC": [".smart_home_rl_mpc_cddac", "Smart_Home_MPCAgent"],
         "SmartHome_RLMPC_CDDAC_FAST": [".smart_home_rl_mpc_cddac_fast", "Smart_Home_MPCAgent"],
-        "SmartHome_RLMPC_CDDAC_FAST_TRY": [".smart_home_rl_mpc_cddac_fast_try", "Smart_Home_MPCAgent"],
+        "SmartHome_RLMPC_CDDAC_FAST_TRY": [".smart_home_rl_mpc_cddac_fast_try1", "Smart_Home_MPCAgent"],
     }
     agent = None
 

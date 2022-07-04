@@ -188,17 +188,106 @@ class SmartHome(Env):
                                   0]))
         return next_state
 
-    # symbolic function
-    def conti_model_sym(self, state: csd.SX, action: csd.SX, uncertainty: csd.SX):
+    # # symbolic function
+    # def conti_model_sym(self, state: csd.SX, action: csd.SX, uncertainty: csd.SX):
+    #     # states
+    #     T_w = state[0]
+    #     T_in = state[1]
+    #     T_g = state[2]
+    #     T_p = state[3]
+    #     T_1 = state[4]
+    #     T_2 = state[5]
+    #     T_3 = state[6]
+    #     E = state[7]
+    #
+    #     # inputs
+    #     P_ch = action[0]
+    #     P_dis = action[1]
+    #     P_buy = action[2]
+    #     P_sell = action[3]
+    #     P_hp = action[4]
+    #     X_v = action[5]
+    #
+    #     # uncertainties
+    #     P_rad = uncertainty[0]
+    #     P_app = uncertainty[1]
+    #     T_out = uncertainty[2]
+    #
+    #     # others
+    #     T_ret = (1 - math.exp(-self.rho)) * T_g + math.exp(-self.rho) * T_p
+    #     T_inl = X_v * (T_1 - T_ret) + T_ret
+    #     COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
+    #
+    #     # ODEs
+    #     d_T_w = (
+    #             1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
+    #     )
+    #     d_T_in = (
+    #             1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
+    #     )
+    #     d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
+    #     d_T_p = (
+    #             1
+    #             / self.C_p
+    #             * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
+    #     )
+    #     d_T_1 = (
+    #             1
+    #             / (self.m_1 * self.C_wat)
+    #             * (
+    #                     self.R_1 * (T_2 - T_1)
+    #                     - self.R_w * (T_1 - T_out)
+    #                     + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
+    #             )
+    #     )
+    #     d_T_2 = (
+    #             1
+    #             / (self.m_2 * self.C_wat)
+    #             * (
+    #                     self.R_2 * (T_3 - T_2)
+    #                     - self.R_2 * (T_2 - T_1)
+    #                     - self.R_w * (T_2 - T_out)
+    #                     + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
+    #                     + COP * 1000 * P_hp
+    #             )
+    #     )
+    #     d_T_3 = (
+    #             1
+    #             / (self.m_3 * self.C_wat)
+    #             * (
+    #                     -self.R_3 * (T_3 - T_2)
+    #                     - self.R_w * (T_3 - T_out)
+    #                     + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
+    #             )
+    #     )
+    #     d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
+    #     dot_state = csd.vertcat(d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E)
+    #     return dot_state
+    #
+    # # with theta, dimension of theta_model is 1*4
+    # # symbolic function
+    # def discrete_model_mpc(self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX):
+    #     k1 = self.conti_model_sym(state, action, uncertainty)
+    #     k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty)
+    #     k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty)
+    #     k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty)
+    #     next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4) + csd.vertcat(
+    #         theta_model, csd.MX.zeros(4, 1)
+    #     )
+    #     return next_state
+    #
+    # # def get_model(self, state, action, uncertainty, theta_model):
+    # #     mpc_model = csd.Function("mpc_model", [state, action, uncertainty, theta_model],
+    # #                              self.discrete_model_mpc(state, action, uncertainty, theta_model))
+    # #     return mpc_model
+
+    # symbolic function for mpc model
+    def conti_model_sym(self, state: csd.SX, action: csd.SX, uncertainty: csd.SX, theta_model: csd.SX):
         # states
-        T_w = state[0]
-        T_in = state[1]
-        T_g = state[2]
-        T_p = state[3]
-        T_1 = state[4]
-        T_2 = state[5]
-        T_3 = state[6]
-        E = state[7]
+        T_in = state[0]
+        T_g = state[1]
+        T_2 = state[2]
+        E = state[3]
 
         # inputs
         P_ch = action[0]
@@ -214,72 +303,31 @@ class SmartHome(Env):
         T_out = uncertainty[2]
 
         # others
-        T_ret = (1 - math.exp(-self.rho)) * T_g + math.exp(-self.rho) * T_p
-        T_inl = X_v * (T_1 - T_ret) + T_ret
-        COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
+        COP = self.a_cop * T_out + self.b_cop * T_2 + self.c_cop
 
         # ODEs
-        d_T_w = (
-                1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
-        )
-        d_T_in = (
-                1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
-        )
-        d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
-        d_T_p = (
-                1
-                / self.C_p
-                * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
-        )
-        d_T_1 = (
-                1
-                / (self.m_1 * self.C_wat)
-                * (
-                        self.R_1 * (T_2 - T_1)
-                        - self.R_w * (T_1 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
-                )
-        )
-        d_T_2 = (
-                1
-                / (self.m_2 * self.C_wat)
-                * (
-                        self.R_2 * (T_3 - T_2)
-                        - self.R_2 * (T_2 - T_1)
-                        - self.R_w * (T_2 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
-                        + COP * 1000 * P_hp
-                )
-        )
-        d_T_3 = (
-                1
-                / (self.m_3 * self.C_wat)
-                * (
-                        -self.R_3 * (T_3 - T_2)
-                        - self.R_w * (T_3 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
-                )
-        )
+        d_T_in = 1 / self.C_in * (theta_model[0] * self.k_w_out * self.k_w_in * (T_out - T_in) +
+                                  theta_model[1] * self.k_g_in * (T_g - T_in))
+        d_T_g = 1 / self.C_g * (theta_model[2] * self.k_g_in * (T_in - T_g) +
+                                theta_model[3] * self.M_inl * self.C_wat * X_v * (T_2 - T_g))
+        d_T_2 = (1 / ((self.m_1 + self.m_2 + self.m_3) * self.C_wat)
+                 * (- theta_model[4] * self.R_w * (T_2 - T_out)
+                    + theta_model[5] * X_v * self.M_inl * self.C_wat * (T_g - T_2)
+                    + COP * 1000 * P_hp))
         d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
-        dot_state = csd.vertcat(d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E)
+        dot_state = csd.vertcat(d_T_in, d_T_g, d_T_2, d_E)
         return dot_state
 
-    # with theta, dimension of theta_model is 1*4
-    # symbolic function
-    def discrete_model_mpc(self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX):
-        k1 = self.conti_model_sym(state, action, uncertainty)
-        k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty)
-        k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty)
-        k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty)
-        next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4) + csd.vertcat(
-            theta_model, csd.MX.zeros(4, 1)
-        )
-        return next_state
+        # with theta, dimension of theta_model is 1*4
+        # symbolic function
 
-    # def get_model(self, state, action, uncertainty, theta_model):
-    #     mpc_model = csd.Function("mpc_model", [state, action, uncertainty, theta_model],
-    #                              self.discrete_model_mpc(state, action, uncertainty, theta_model))
-    #     return mpc_model
+    def discrete_model_mpc(self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX):
+        k1 = self.conti_model_sym(state, action, uncertainty, theta_model)
+        k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty, theta_model)
+        k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty, theta_model)
+        k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty, theta_model)
+        next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
+        return next_state
 
     def reset(self):
         # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
@@ -294,6 +342,10 @@ class SmartHome(Env):
         )
         self.t = 0
         return self.state
+
+    def extract_state(self, state_8):
+        state_4 = np.array([state_8[1], state_8[2], state_8[5], state_8[7]])
+        return state_4
 
     def step(self, action):
         # real sys uncertainty = baseline estimate data + noises

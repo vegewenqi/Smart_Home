@@ -10,7 +10,7 @@ class EnvFactory:
         "pendulum": ["gym", "Pendulum-v0"],
         "point_mass": [".point_mass", "PointMass"],
         "motor_model": [".motor_model", "MotorContinuousEnv"],
-        "smart_home": [".smart_home", "SmartHome"],
+        "smart_home": [".smart_home_new", "SmartHome"],
         "house_4pumps": [".house_4pumps", "House4Pumps"],
         "smart_home_plot": [".smart_home_plot", "SmartHome"],
     }

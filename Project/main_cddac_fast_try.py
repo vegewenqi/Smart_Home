@@ -42,10 +42,12 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
     # print(f"Iteration: {it}------")
     # Randomly initialize the starting state
     state = env_train.reset()
+    state = env_train.extract_state(state)
     for step in tqdm_context(range(params["epi_length"]), desc="Episode", pos=1):
         # print(f'Iteration {it} epi_step {step}-------------')
         action, add_info = agent.get_action(state, mode="train")
         next_state, reward, done = env_train.step(action)
+        next_state = env_train.extract_state(next_state)
         add_info["phi_ns"] = agent.state_to_feature(next_state.squeeze())
         replay_buffer.push(state, action, reward, next_state, done, add_info)
 
