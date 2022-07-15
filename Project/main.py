@@ -1,61 +1,57 @@
-import sys
-import json
-import numpy as np
-import matplotlib.pyplot as plt
-from statistics import mean
-import os
-
 from Environments import env_init
 from Agents import agent_init
 from replay_buffer import BasicBuffer
 from helpers import tqdm_context
-from rollout_utils import rollout_sample, train_controller
+from rollout_utils import exp_init, iter_init, rollout_sample, train_agent, \
+    process_iter_returns, plot_eval_perf
 
-cmd_line = sys.argv
-with open(cmd_line[1]) as f:
-    params = json.load(f)
-    print(params)
+# Experiment init
+params, results_dir, seed = exp_init()
 
 # Environment, agent and buffer initialization
-env = env_init(params["env"], params["env_params"], params["seed"])
-agent = agent_init(env, params["agent"], params["agent_params"], params["seed"])
-replay_buffer = BasicBuffer(params["buffer_maxlen"], params["seed"])
+env = env_init(params["env"], params["env_params"], seed)
+agent = agent_init(env, params["agent"], params["agent_params"], seed)
+replay_buffer = BasicBuffer(params["buffer_maxlen"], seed)
 
 # Returns
 train_returns = []
 eval_returns = []
+data_dict = {}
 
 for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
-    print()
-    print(f"Iteration: {it}------")
+    iter_init(it, data_dict)
 
     # Sampling
-    train_return = []
+    t_returns = []
     for train_runs in tqdm_context(range(params["n_trains"]), desc="Train Rollouts"):
         rollout_return = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="train")
-        # once execute rollout_sample，inside run env.reset()
-        train_return.append(rollout_return)
-    train_returns.append(mean(train_return))
-    print(f"Training return: {mean(train_return)}")
+        t_returns.append(rollout_return)
 
     # Replay + Learning
-    train_controller(agent, replay_buffer)
+    train_agent(agent, replay_buffer, data_dict[it])
 
     # Evaluation
-    eval_return = []
+    e_returns = []
     if (it + 1) % 1 == 0:
         for eval_runs in tqdm_context(range(params["n_evals"]), desc="Evaluation Rollouts"):
             rollout_return = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="eval")
-        eval_return.append(rollout_return)
-        eval_returns.append(mean(eval_return))
-        print(f"Evaluation return: {mean(eval_return)}")
+            e_returns.append(rollout_return)
+
+    process_iter_returns(
+        it,
+        results_dir,
+        data_dict,
+        replay_buffer,
+        train_returns,
+        eval_returns,
+        t_returns,
+        e_returns,
+        params["save_data"],
+    )
 
 # Final rollout for visualization
-# _ = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="final")
-# # Evaluation performance plot
-# perf = plt.figure("Evaluation Performance")
-# plt.plot(eval_returns)
-# plt.ylabel("return")
-# plt.show()
-print(eval_returns)
-# plt.pause(5)
+_ = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="final")
+
+# Evaluation performance plot
+plot_eval_perf(results_dir, params, eval_returns)
+

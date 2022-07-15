@@ -1,5 +1,5 @@
 {
-    "env": "smart_home",
+    "env": "smart_home_simplified",
     "env_params": {
         "model_noise_level": 2,
         "unc_noise_level": 2,
@@ -14,21 +14,19 @@
     "agent": "SmartHome_RLMPC_LSTD",
     "agent_params":{
         "cost_params":{"cost_defn": "custom"},
-        "eps": 0.02,
+        "eps": 0.05,
         "gamma": 0.98,
-        "actor_lr": 3e-6,
-        "horizon": 6,
-        "train_params":{"iterations": 25,
+        "actor_lr": 0.00001,
+        "horizon": 12,
+        "train_params":{"iterations": 50,
                         "batch_size": 64},
         "experience_replay": false,
         "constrained_updates": false,
         "debug": false},
 
-    "results_dir": "delete",
-    "save_data": false,
-    "n_iterations": 100,
+    "n_iterations": 50,
     "seed": 1,
-    "n_trains": 1,
+    "n_trains":1,
     "n_steps": 96,
     "n_evals": 0,
     "buffer_maxlen": 1000

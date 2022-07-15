@@ -1,3 +1,5 @@
+from abc import ABC
+
 import numpy as np
 import pandas as pd
 import math
@@ -9,13 +11,18 @@ from base_types import Env
 import os
 
 
-class SmartHome(Env):
+def extract_state(state_8):
+    state_4 = np.array([state_8[1], state_8[2], state_8[5], state_8[7]])
+    return state_4
+
+
+class SmartHome_simplified(Env, ABC):
     def __init__(self, env_str, env_params, seed):
         # state box, dimension of 8
         super().__init__(env_str)
         self.state_space = Box(
-            low=np.array([0, 0, 0, 0, 10, 10, 10, 0]),
-            high=np.array([100, 100, 100, 100, 70, 70, 70, 5], dtype=np.float32),
+            low=np.array([0, 0, 10, 0]),
+            high=np.array([100, 100, 70, 5], dtype=np.float32),
         )
         self.observation_space = Box(
             low=np.array([0, 0, 0, 0, 10, 10, 10, 0]),
@@ -23,24 +30,18 @@ class SmartHome(Env):
         )
         # action box, dimension of 9
         self.action_space = Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.2]),
-            # high=np.array([10, 10, 10, 10, 10, 1], dtype=np.float32),
-            high=np.array([1.0, 1.0, 5.0, 5.0, 3.0, 0.8], dtype=np.float32),
+            low=np.array([0, 0, 0, 0, 0, 0]),
+            high=np.array([1.2, 1.2, 6, 6, 3.6, 1], dtype=np.float32),
         )
 
         # standard deviation
         self.epsilon_rad_sigma = env_params["epsilon_rad_sigma"]  # p_rad ~= 0.55 kW, sigma ~= 0.0001
         self.epsilon_out_sigma = env_params["epsilon_out_sigma"]  # T_out ~= 23, sigma ~= 0.1
         self.epsilon_app_sigma = env_params["epsilon_app_sigma"]  # p_app ~= 3.5 kW, sigma ~= 0.01
-        self.epsilon_1234_sigma = env_params["epsilon_1234_sigma"]  # T ~= 40, sigma ~= 0.1
+        self.epsilon_1234_sigma = env_params["epsilon_1234_sigma"]  # T ~= 40, sima ~= 0.1
         self.c_low = env_params["c_low"]
         self.c_hig = env_params["c_hig"]
         self.dt = env_params["dt"]  # dt=900s=15min
-
-        # Seeding and random number gen
-        self.rng1 = np.random.default_rng(seed)
-        self.rng2 = np.random.default_rng(seed)
-        self.rng3 = np.random.default_rng(seed)
 
         # uncertainty and price
         project_path = os.path.abspath(os.getcwd())
@@ -186,20 +187,23 @@ class SmartHome(Env):
         k4 = self.conti_model(state + self.dt * k3, action, uncertainty)
         next_state = (state
                       + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
-                      + np.concatenate((self.rng2.normal(0, self.epsilon_1234_sigma, 4), np.zeros(4))))
+                      + np.array([np.random.normal(0, self.epsilon_1234_sigma),
+                                  np.random.normal(0, self.epsilon_1234_sigma),
+                                  np.random.normal(0, self.epsilon_1234_sigma),
+                                  np.random.normal(0, self.epsilon_1234_sigma),
+                                  0,
+                                  0,
+                                  0,
+                                  0]))
         return next_state
 
-    # symbolic function
-    def conti_model_sym(self, state: csd.SX, action: csd.SX, uncertainty: csd.SX):
+    # symbolic function for mpc model
+    def conti_model_sym(self, state: csd.SX, action: csd.SX, uncertainty: csd.SX, theta_model: csd.SX):
         # states
-        T_w = state[0]
-        T_in = state[1]
-        T_g = state[2]
-        T_p = state[3]
-        T_1 = state[4]
-        T_2 = state[5]
-        T_3 = state[6]
-        E = state[7]
+        T_in = state[0]
+        T_g = state[1]
+        T_2 = state[2]
+        E = state[3]
 
         # inputs
         P_ch = action[0]
@@ -215,69 +219,29 @@ class SmartHome(Env):
         T_out = uncertainty[2]
 
         # others
-        T_ret = (1 - math.exp(-self.rho)) * T_g + math.exp(-self.rho) * T_p
-        T_inl = X_v * (T_1 - T_ret) + T_ret
-        COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
+        COP = self.a_cop * T_out + self.b_cop * T_2 + self.c_cop
 
         # ODEs
-        d_T_w = (
-                1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
-        )
-        d_T_in = (
-                1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
-        )
-        d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
-        d_T_p = (
-                1
-                / self.C_p
-                * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
-        )
-        d_T_1 = (
-                1
-                / (self.m_1 * self.C_wat)
-                * (
-                        self.R_1 * (T_2 - T_1)
-                        - self.R_w * (T_1 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
-                )
-        )
-        d_T_2 = (
-                1
-                / (self.m_2 * self.C_wat)
-                * (
-                        self.R_2 * (T_3 - T_2)
-                        - self.R_2 * (T_2 - T_1)
-                        - self.R_w * (T_2 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
-                        + COP * 1000 * P_hp
-                )
-        )
-        d_T_3 = (
-                1
-                / (self.m_3 * self.C_wat)
-                * (
-                        -self.R_3 * (T_3 - T_2)
-                        - self.R_w * (T_3 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
-                )
-        )
+        d_T_in = 1 / self.C_in * (theta_model[0] * self.k_w_out * self.k_w_in * (T_out - T_in) +
+                                  theta_model[1] * self.k_g_in * (T_g - T_in))
+        d_T_g = 1 / self.C_g * (theta_model[2] * self.k_g_in * (T_in - T_g) +
+                                theta_model[3] * self.M_inl * self.C_wat * X_v * (T_2 - T_g))
+        d_T_2 = (1 / ((self.m_1 + self.m_2 + self.m_3) * self.C_wat)
+                 * (- theta_model[4] * self.R_w * (T_2 - T_out)
+                    + theta_model[5] * X_v * self.M_inl * self.C_wat * (T_g - T_2)
+                    + COP * 1000 * P_hp))
         d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
-        dot_state = csd.vertcat(d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E)
+        dot_state = csd.vertcat(d_T_in, d_T_g, d_T_2, d_E)
         return dot_state
 
     # with theta, dimension of theta_model is 1*4
     # symbolic function
     def discrete_model_mpc(self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX):
-        k1 = self.conti_model_sym(state, action, uncertainty)
-        # k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty)
-        # k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty)
-        # k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty)
-        # next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4) + csd.vertcat(
-        #     theta_model, csd.MX.zeros(4, 1)
-        # )
-        next_state = state + self.dt * k1 + csd.vertcat(
-            theta_model, csd.MX.zeros(4, 1)
-        )
+        k1 = self.conti_model_sym(state, action, uncertainty, theta_model)
+        k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty, theta_model)
+        k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty, theta_model)
+        k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty, theta_model)
+        next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
         return next_state
 
     # def get_model(self, state, action, uncertainty, theta_model):
@@ -289,15 +253,16 @@ class SmartHome(Env):
         # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
         #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         # ) * (np.random.normal(scale=1, size=8))
-        self.state = np.array([15.0, 25.0, 15.0, 27.0, 38.0, 50.0, 16.0, 2.0]) + 0.1 * np.array(
-            [1.0, 0.05, 1.0, 1.0, 1.0, 0.1, 1.0, 0.1]
-        ) * (self.rng1.normal(scale=1.0, size=8))
+        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.0 * np.array(
+            [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
+        ) * (np.random.normal(scale=1, size=8))
 
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high
         )
         self.t = 0
-        return self.state, self.state
+        self.obs = extract_state(self.state)
+        return self.obs, self.state
 
     def step(self, action):
         # real sys uncertainty = baseline estimate data + noises
@@ -305,15 +270,16 @@ class SmartHome(Env):
             self.state,
             action,
             self.uncertainty[:, self.t]
-            + np.array([self.rng2.normal(0, self.epsilon_rad_sigma),
-                        self.rng2.normal(0, self.epsilon_app_sigma),
-                        self.rng2.normal(0, self.epsilon_out_sigma)]))
+            + np.array([np.random.normal(0, self.epsilon_rad_sigma),
+                        np.random.normal(0, self.epsilon_app_sigma),
+                        np.random.normal(0, self.epsilon_out_sigma)]))
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high
         )
         rew, done = self.reward_fn(self.state, action, self.price[:, self.t])
         self.t += 1
-        return self.state, self.state, rew, done
+        self.obs = extract_state(self.state)
+        return self.obs, self.state, rew, done
 
     # return r, done
     def reward_fn(self, state, action, price):
@@ -354,7 +320,7 @@ if __name__ == "__main__":
     with open('../../Settings/other/smarthome_rl_mpc_lstd.json', 'r') as f:
         params = json.load(f)
         print(params)
-    a = SmartHome(params["env"], params["env_params"], 1)
+    a = SmartHome_simplified(params["env"], params["env_params"], 1)
     # print(a.observation_space.shape)
     print(a.state)
     print("---------")

@@ -12,6 +12,7 @@ class Env(gym.Env, ABC):
     def __init__(self, env_str: str):
         self.env_str = env_str
         self.state = None
+        self.obs = None
         super().__init__()
 
     @abstractmethod
