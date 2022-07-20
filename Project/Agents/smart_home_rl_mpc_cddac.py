@@ -38,10 +38,25 @@ class Smart_Home_MPCAgent(TrainableController):
         self.num_policy_update = 0
 
         # Theta bounds
+        # self.theta_model = csd.MX.sym("theta_model", 4)
+        self.theta_in = csd.MX.sym("theta_in", 3)
+        self.theta_en = csd.MX.sym("theta_en", 2)
+        self.theta_t = csd.MX.sym("theta_t", 3)
+        # self.theta_hp = csd.MX.sym("theta_hp", 1)
+        # self.theta_xv = csd.MX.sym("theta_xv", 1)
+        self.theta_e = csd.MX.sym("theta_e", 1)
+        # self.theta_ch_dis = csd.MX.sym("theta_ch_dis", 2)
+        # self.theta_buy_sell = csd.MX.sym("theta_buy_sell", 2)
+        self.theta = csd.vertcat(
+            self.theta_in,
+            self.theta_en,
+            self.theta_t,
+            self.theta_e,
+        )
         self.theta_low_bound = np.array(
             [
                 [
-                    0.0,
+                    -5.0,
                     -5.0,
                     -5.0,
                     0.0,
@@ -57,6 +72,7 @@ class Smart_Home_MPCAgent(TrainableController):
         self.theta_up_bound = np.array(
             [
                 [
+                    5.0,
                     5.0,
                     5.0,
                     np.inf,
@@ -166,10 +182,9 @@ class Smart_Home_MPCAgent(TrainableController):
                 new_theta = self.actor.actor_wt - self.actor_lr * (
                     m_hat / (np.sqrt(n_hat) + 10 ** (-8))
                 )
-                # self.actor.actor_wt = new_theta.clip(
-                #     self.theta_low_bound, self.theta_up_bound
-                # )
-                self.actor.actor_wt = new_theta
+                self.actor.actor_wt = new_theta.clip(
+                    self.theta_low_bound, self.theta_up_bound
+                )
         print(self.actor.actor_wt.T)
         return {"l_theta": self.actor.actor_wt}
 
@@ -506,7 +521,7 @@ class Custom_MPCActor(Custom_QP_formulation):
         self.p_val = np.zeros((self.p_dim, 1))
 
         self.actor_wt = np.concatenate(
-            (np.array([5.0, 0.0, 0.0]), np.array([3.0, 3.0]), np.zeros(4)),
+            (np.array([5.0, 0.0, 0.0]), np.array([3.0, 1.0]), np.zeros(4)),
             axis=None,
         )[:, None]
 
