@@ -29,10 +29,18 @@ class SmartHome(Env):
         )
 
         # standard deviation
-        self.epsilon_rad_sigma = env_params["epsilon_rad_sigma"]  # p_rad ~= 0.55 kW, sigma ~= 0.0001
-        self.epsilon_out_sigma = env_params["epsilon_out_sigma"]  # T_out ~= 23, sigma ~= 0.1
-        self.epsilon_app_sigma = env_params["epsilon_app_sigma"]  # p_app ~= 3.5 kW, sigma ~= 0.01
-        self.epsilon_1234_sigma = env_params["epsilon_1234_sigma"]  # T ~= 40, sigma ~= 0.1
+        self.epsilon_rad_sigma = env_params[
+            "epsilon_rad_sigma"
+        ]  # p_rad ~= 0.55 kW, sigma ~= 0.0001
+        self.epsilon_out_sigma = env_params[
+            "epsilon_out_sigma"
+        ]  # T_out ~= 23, sigma ~= 0.1
+        self.epsilon_app_sigma = env_params[
+            "epsilon_app_sigma"
+        ]  # p_app ~= 3.5 kW, sigma ~= 0.01
+        self.epsilon_1234_sigma = env_params[
+            "epsilon_1234_sigma"
+        ]  # T ~= 40, sigma ~= 0.1
         self.c_low = env_params["c_low"]
         self.c_hig = env_params["c_hig"]
         self.dt = env_params["dt"]  # dt=900s=15min
@@ -44,7 +52,9 @@ class SmartHome(Env):
 
         # uncertainty and price
         project_path = os.path.abspath(os.getcwd())
-        data_path = os.path.join(project_path, 'Data/SmartHome/smart_home_uncertainties.ods')
+        data_path = os.path.join(
+            project_path, "Data/SmartHome/smart_home_uncertainties.ods"
+        )
         data = pd.read_excel(data_path, dtype=float)
         self.uncertainty = np.concatenate(
             [
@@ -56,7 +66,7 @@ class SmartHome(Env):
         )
         self.uncertainty = np.repeat(self.uncertainty, 4, axis=1)
 
-        data_path = os.path.join(project_path, 'Data/SmartHome/smart_home_prices.ods')
+        data_path = os.path.join(project_path, "Data/SmartHome/smart_home_prices.ods")
         data = pd.read_excel(data_path, dtype=float)
         self.price = np.concatenate(
             [
@@ -77,10 +87,10 @@ class SmartHome(Env):
         self.k_w_in = 64.8
         self.k_g_in = 594.8
         self.k_p_g = 506.2
-        self.C_w = 312 * 10 ** 4
-        self.C_in = 4.4 * 10 ** 6
-        self.C_g = 18 * 10 ** 5
-        self.C_p = 1.7 * 10 ** 6
+        self.C_w = 312 * 10**4
+        self.C_in = 4.4 * 10**6
+        self.C_g = 18 * 10**5
+        self.C_p = 1.7 * 10**6
         self.R_w = 0.99
         self.M_inl = 0.062
         self.C_wat = 4180
@@ -134,47 +144,49 @@ class SmartHome(Env):
 
         # ODEs
         d_T_w = (
-                1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
+            1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
         )
         d_T_in = (
-                1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
+            1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
         )
         d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
         d_T_p = (
-                1
-                / self.C_p
-                * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
+            1
+            / self.C_p
+            * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
         )
         d_T_1 = (
-                1
-                / (self.m_1 * self.C_wat)
-                * (
-                        self.R_1 * (T_2 - T_1)
-                        - self.R_w * (T_1 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
-                )
+            1
+            / (self.m_1 * self.C_wat)
+            * (
+                self.R_1 * (T_2 - T_1)
+                - self.R_w * (T_1 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
+            )
         )
         d_T_2 = (
-                1
-                / (self.m_2 * self.C_wat)
-                * (
-                        self.R_2 * (T_3 - T_2)
-                        - self.R_2 * (T_2 - T_1)
-                        - self.R_w * (T_2 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
-                        + COP * 1000 * P_hp
-                )
+            1
+            / (self.m_2 * self.C_wat)
+            * (
+                self.R_2 * (T_3 - T_2)
+                - self.R_2 * (T_2 - T_1)
+                - self.R_w * (T_2 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
+                + COP * 1000 * P_hp
+            )
         )
         d_T_3 = (
-                1
-                / (self.m_3 * self.C_wat)
-                * (
-                        -self.R_3 * (T_3 - T_2)
-                        - self.R_w * (T_3 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
-                )
+            1
+            / (self.m_3 * self.C_wat)
+            * (
+                -self.R_3 * (T_3 - T_2)
+                - self.R_w * (T_3 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
+            )
         )
-        d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)  # battery's sampling time is one hour
+        d_E = (
+            1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
+        )  # battery's sampling time is one hour
         dot_state = np.array([d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E])
         return dot_state
 
@@ -184,9 +196,13 @@ class SmartHome(Env):
         k2 = self.conti_model(state + 0.5 * self.dt * k1, action, uncertainty)
         k3 = self.conti_model(state + 0.5 * self.dt * k2, action, uncertainty)
         k4 = self.conti_model(state + self.dt * k3, action, uncertainty)
-        next_state = (state
-                      + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
-                      + np.concatenate((self.rng2.normal(0, self.epsilon_1234_sigma, 4), np.zeros(4))))
+        next_state = (
+            state
+            + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
+            + np.concatenate(
+                (self.rng2.normal(0, self.epsilon_1234_sigma, 4), np.zeros(4))
+            )
+        )
         return next_state
 
     # symbolic function
@@ -221,45 +237,45 @@ class SmartHome(Env):
 
         # ODEs
         d_T_w = (
-                1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
+            1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
         )
         d_T_in = (
-                1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
+            1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
         )
         d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
         d_T_p = (
-                1
-                / self.C_p
-                * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
+            1
+            / self.C_p
+            * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
         )
         d_T_1 = (
-                1
-                / (self.m_1 * self.C_wat)
-                * (
-                        self.R_1 * (T_2 - T_1)
-                        - self.R_w * (T_1 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
-                )
+            1
+            / (self.m_1 * self.C_wat)
+            * (
+                self.R_1 * (T_2 - T_1)
+                - self.R_w * (T_1 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
+            )
         )
         d_T_2 = (
-                1
-                / (self.m_2 * self.C_wat)
-                * (
-                        self.R_2 * (T_3 - T_2)
-                        - self.R_2 * (T_2 - T_1)
-                        - self.R_w * (T_2 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
-                        + COP * 1000 * P_hp
-                )
+            1
+            / (self.m_2 * self.C_wat)
+            * (
+                self.R_2 * (T_3 - T_2)
+                - self.R_2 * (T_2 - T_1)
+                - self.R_w * (T_2 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
+                + COP * 1000 * P_hp
+            )
         )
         d_T_3 = (
-                1
-                / (self.m_3 * self.C_wat)
-                * (
-                        -self.R_3 * (T_3 - T_2)
-                        - self.R_w * (T_3 - T_out)
-                        + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
-                )
+            1
+            / (self.m_3 * self.C_wat)
+            * (
+                -self.R_3 * (T_3 - T_2)
+                - self.R_w * (T_3 - T_out)
+                + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
+            )
         )
         d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
         dot_state = csd.vertcat(d_T_w, d_T_in, d_T_g, d_T_p, d_T_1, d_T_2, d_T_3, d_E)
@@ -267,31 +283,32 @@ class SmartHome(Env):
 
     # with theta, dimension of theta_model is 1*4
     # symbolic function
-    def discrete_model_mpc(self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX):
+    def discrete_model_mpc(
+        self, state: csd.MX, action: csd.MX, uncertainty: csd.MX, theta_model: csd.MX
+    ):
         k1 = self.conti_model_sym(state, action, uncertainty)
-        # k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty)
-        # k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty)
-        # k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty)
-        # next_state = state + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4) + csd.vertcat(
+        k2 = self.conti_model_sym(state + 0.5 * self.dt * k1, action, uncertainty)
+        k3 = self.conti_model_sym(state + 0.5 * self.dt * k2, action, uncertainty)
+        k4 = self.conti_model_sym(state + self.dt * k3, action, uncertainty)
+        next_state = (
+            state
+            + (1 / 6) * self.dt * (k1 + 2 * k2 + 2 * k3 + k4)
+            + csd.vertcat(theta_model, csd.MX.zeros(4, 1))
+        )
+        # next_state = state + self.dt * k1 + csd.vertcat(
         #     theta_model, csd.MX.zeros(4, 1)
         # )
-        next_state = state + self.dt * k1 + csd.vertcat(
-            theta_model, csd.MX.zeros(4, 1)
-        )
         return next_state
-
-    # def get_model(self, state, action, uncertainty, theta_model):
-    #     mpc_model = csd.Function("mpc_model", [state, action, uncertainty, theta_model],
-    #                              self.discrete_model_mpc(state, action, uncertainty, theta_model))
-    #     return mpc_model
 
     def reset(self):
         # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
         #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         # ) * (np.random.normal(scale=1, size=8))
-        self.state = np.array([15.0, 25.0, 15.0, 27.0, 38.0, 50.0, 16.0, 2.0]) + 0.1 * np.array(
-            [1.0, 0.05, 1.0, 1.0, 1.0, 0.1, 1.0, 0.1]
-        ) * (self.rng1.normal(scale=1.0, size=8))
+        self.state = np.array(
+            [15.0, 25.0, 15.0, 27.0, 38.0, 50.0, 16.0, 2.0]
+        ) + 0.1 * np.array([1.0, 0.05, 1.0, 1.0, 1.0, 0.1, 1.0, 0.1]) * (
+            self.rng1.normal(scale=1.0, size=8)
+        )
 
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high
@@ -305,9 +322,14 @@ class SmartHome(Env):
             self.state,
             action,
             self.uncertainty[:, self.t]
-            + np.array([self.rng2.normal(0, self.epsilon_rad_sigma),
-                        self.rng2.normal(0, self.epsilon_app_sigma),
-                        self.rng2.normal(0, self.epsilon_out_sigma)]))
+            + np.array(
+                [
+                    self.rng3.normal(0, self.epsilon_rad_sigma),
+                    self.rng3.normal(0, self.epsilon_app_sigma),
+                    self.rng3.normal(0, self.epsilon_out_sigma),
+                ]
+            ),
+        )
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high
         )
@@ -351,7 +373,7 @@ class SmartHome(Env):
 
 if __name__ == "__main__":
     print(os.getcwd())
-    with open('../../Settings/other/smarthome_rl_mpc_lstd.json', 'r') as f:
+    with open("../../Settings/other/smarthome_rl_mpc_lstd.json", "r") as f:
         params = json.load(f)
         print(params)
     a = SmartHome(params["env"], params["env_params"], 1)

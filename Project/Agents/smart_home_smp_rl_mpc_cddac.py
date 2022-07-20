@@ -42,12 +42,16 @@ class Smart_Home_MPCAgent(TrainableController):
             [
                 [
                     0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
                     -5.0,
                     -5.0,
                     0.0,
                     0.0,
-                    -20.0,
-                    -20.0,
                     -20.0,
                     -1.0,
                 ]
@@ -57,12 +61,16 @@ class Smart_Home_MPCAgent(TrainableController):
         self.theta_up_bound = np.array(
             [
                 [
+                    np.inf,
+                    np.inf,
+                    np.inf,
+                    np.inf,
+                    np.inf,
+                    np.inf,
                     5.0,
                     5.0,
                     np.inf,
                     4.0,
-                    20.0,
-                    20.0,
                     20.0,
                     1.0,
                 ]
@@ -96,7 +104,7 @@ class Smart_Home_MPCAgent(TrainableController):
         act, info = self.actor.act_forward(
             state, act_wt=act_wt, time=time
         )  # act_wt = self.actor.actor_wt
-        act += eps * (self.rng2.random(self.action_dim) - 0.5)  # * [1, 1, 5, 5, 3, 1]
+        act += eps * (self.rng2.random(self.action_dim) - 0.5) * [1, 1, 5, 5, 3, 1]
         act = act.clip(self.env.action_space.low, self.env.action_space.high)
         return act, info
 
@@ -120,20 +128,20 @@ class Smart_Home_MPCAgent(TrainableController):
             delta_vi = 0
             delta_omega = 0
 
-            for j, s in enumerate(states):
+            for j, o in enumerate(obss):
                 # all info need for (s,a)
-                phi_s = self.state_to_feature(s.squeeze())
+                phi_s = self.state_to_feature(o.squeeze())
                 V_s = self.get_V_value(phi_s)
                 info_s = infos[j]
                 pi_s = info_s["soln"]["x"].full()[: self.action_dim]
                 action_s = actions[j][:, None]
-                dpi_dtheta_s = self.actor.dPidP(s, info_s["act_wt"], info_s)
+                dpi_dtheta_s = self.actor.dPidP(o, info_s["act_wt"], info_s)
                 phi_sa = self.state_action_to_feature(action_s, pi_s, dpi_dtheta_s)
                 Q_sa = self.get_Q_value(phi_sa, V_s)
 
                 # all info need for (s', pi_s')
-                ns = next_states[j]
-                phi_ns = self.state_to_feature(ns.squeeze())
+                no = next_obss[j]
+                phi_ns = self.state_to_feature(no.squeeze())
                 V_ns = self.get_V_value(phi_ns)
 
                 td_error = rewards[j] + self.gamma * V_ns - Q_sa
@@ -217,7 +225,7 @@ class Custom_QP_formulation:
         # Symbolic variables for optimization problem
         self.x = csd.MX.sym("x", self.obs_dim)
         self.u = csd.MX.sym("u", self.action_dim)
-        self.sigma_dim = 4  # dimension of sigma is 10 in our case
+        self.sigma_dim = 2  # dimension of sigma is 10 in our case
         self.sigma = csd.MX.sym("sigma", self.sigma_dim)
         self.X = csd.MX.sym("X", self.obs_dim, self.N)
         self.U = csd.MX.sym("U", self.action_dim, self.N)
@@ -246,16 +254,17 @@ class Custom_QP_formulation:
         self.PRICE_dim = self.price.size()[0] * self.N
         # theta
         # dimension = 19
-        # self.theta_model = csd.MX.sym("theta_model", 4)
+        self.theta_model = csd.MX.sym("theta_model", 6)
         self.theta_in = csd.MX.sym("theta_in", 3)
         self.theta_en = csd.MX.sym("theta_en", 2)
-        self.theta_t = csd.MX.sym("theta_t", 3)
+        self.theta_t = csd.MX.sym("theta_t", 1)
         # self.theta_hp = csd.MX.sym("theta_hp", 1)
         # self.theta_xv = csd.MX.sym("theta_xv", 1)
         self.theta_e = csd.MX.sym("theta_e", 1)
         # self.theta_ch_dis = csd.MX.sym("theta_ch_dis", 2)
         # self.theta_buy_sell = csd.MX.sym("theta_buy_sell", 2)
         self.theta = csd.vertcat(
+            self.theta_model,
             self.theta_in,
             self.theta_en,
             self.theta_t,
@@ -324,7 +333,7 @@ class Custom_QP_formulation:
 
         # initial model
         xn = self.env.discrete_model_mpc(
-            self.x, self.U[:, 0], self.UNC[:, 0], np.zeros((4, 1))
+            self.x, self.U[:, 0], self.UNC[:, 0], self.theta_model
         )
 
         for i in range(self.N - 1):
@@ -338,7 +347,7 @@ class Custom_QP_formulation:
             # model equality
             g.append(self.X[:, i] - xn)
             xn = self.env.discrete_model_mpc(
-                self.X[:, i], self.U[:, i + 1], self.UNC[:, i + 1], np.zeros((4, 1))
+                self.X[:, i], self.U[:, i + 1], self.UNC[:, i + 1], self.theta_model
             )
 
             # sys equalities
@@ -358,15 +367,11 @@ class Custom_QP_formulation:
 
             # sys inequalities
             # 20 + sigma_t_1,2,3 < t_1,2,3 + theta_t_1,2,3 < 60 + sigma_t_1,2,3
-            hx.append((20 + self.Sigma[0, i]) - (self.X[4, i] + self.theta_t[0]))
-            hx.append((self.X[4, i] + self.theta_t[0]) - (60 + self.Sigma[0, i]))
-            hx.append((20 + self.Sigma[1, i]) - (self.X[5, i] + self.theta_t[1]))
-            hx.append((self.X[5, i] + self.theta_t[1]) - (60 + self.Sigma[1, i]))
-            hx.append((20 + self.Sigma[2, i]) - (self.X[6, i] + self.theta_t[2]))
-            hx.append((self.X[6, i] + self.theta_t[2]) - (60 + self.Sigma[2, i]))
+            hx.append((20 + self.Sigma[0, i]) - (self.X[2, i] + self.theta_t[0]))
+            hx.append((self.X[2, i] + self.theta_t[0]) - (60 + self.Sigma[0, i]))
             # 1 + sigma_e < e + theta_e< 4 + sigma_e
-            hx.append((1 + self.Sigma[3, i]) - (self.X[7, i] + self.theta_e))
-            hx.append((self.X[7, i] + self.theta_e) - (4 + self.Sigma[3, i]))
+            hx.append((1 + self.Sigma[1, i]) - (self.X[3, i] + self.theta_e))
+            hx.append((self.X[3, i] + self.theta_e) - (4 + self.Sigma[1, i]))
 
             # input inequalities
             # 0 < p_hp + theta_hp < 3 + sigma_hp
@@ -399,28 +404,16 @@ class Custom_QP_formulation:
 
         g.append(self.X[:, self.N - 1] - xn)
         hx.append(
-            (20 + self.Sigma[0, self.N - 1]) - (self.X[4, self.N - 1] + self.theta_t[0])
+            (20 + self.Sigma[0, self.N - 1]) - (self.X[2, self.N - 1] + self.theta_t[0])
         )
         hx.append(
-            (self.X[4, self.N - 1] + self.theta_t[0]) - (60 + self.Sigma[0, self.N - 1])
+            (self.X[2, self.N - 1] + self.theta_t[0]) - (60 + self.Sigma[0, self.N - 1])
         )
         hx.append(
-            (20 + self.Sigma[1, self.N - 1]) - (self.X[5, self.N - 1] + self.theta_t[1])
+            (1 + self.Sigma[1, self.N - 1]) - (self.X[3, self.N - 1] + self.theta_e)
         )
         hx.append(
-            (self.X[5, self.N - 1] + self.theta_t[1]) - (60 + self.Sigma[1, self.N - 1])
-        )
-        hx.append(
-            (20 + self.Sigma[2, self.N - 1]) - (self.X[6, self.N - 1] + self.theta_t[2])
-        )
-        hx.append(
-            (self.X[6, self.N - 1] + self.theta_t[2]) - (60 + self.Sigma[2, self.N - 1])
-        )
-        hx.append(
-            (1 + self.Sigma[3, self.N - 1]) - (self.X[7, self.N - 1] + self.theta_e)
-        )
-        hx.append(
-            (self.X[7, self.N - 1] + self.theta_e) - (4 + self.Sigma[3, self.N - 1])
+            (self.X[3, self.N - 1] + self.theta_e) - (4 + self.Sigma[1, self.N - 1])
         )
         for _ in range(self.sigma_dim):
             hsg.append(-self.Sigma[_, self.N - 1])
@@ -480,8 +473,8 @@ class Custom_QP_formulation:
         l_spo = self.price_buy * self.u[2] - self.price_sell * self.u[3]
         l_tem = (
             self.theta_in[0]
-            * (self.x[1] - 23 - self.theta_in[1])
-            * (self.x[1] - 27 - self.theta_in[2])
+            * (self.x[0] - 23 - self.theta_in[1])
+            * (self.x[0] - 27 - self.theta_in[2])
         )
         stage_cost = l_tem + l_spo
         stage_cost_fn = csd.Function(
@@ -490,7 +483,7 @@ class Custom_QP_formulation:
         return stage_cost_fn
 
     def terminal_cost_fn(self):
-        terminal_cost = self.theta_en[0] * (self.x[7] - self.theta_en[1]) ** 2
+        terminal_cost = self.theta_en[0] * (self.x[3] - self.theta_en[1]) ** 2
         terminal_cost_fn = csd.Function(
             "stage_cost_fn", [self.x, self.theta], [terminal_cost]
         )
@@ -506,7 +499,7 @@ class Custom_MPCActor(Custom_QP_formulation):
         self.p_val = np.zeros((self.p_dim, 1))
 
         self.actor_wt = np.concatenate(
-            (np.array([5.0, 0.0, 0.0]), np.array([3.0, 3.0]), np.zeros(4)),
+            (np.ones(6), np.array([5.0, 0.0, 0.0]), np.array([3.0, 3.0]), np.zeros(2)),
             axis=None,
         )[:, None]
 

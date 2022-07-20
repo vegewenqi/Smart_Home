@@ -2,8 +2,14 @@ from Environments import env_init
 from Agents import agent_init
 from replay_buffer import BasicBuffer
 from helpers import tqdm_context
-from rollout_utils import exp_init, iter_init, rollout_sample, train_agent, \
-    process_iter_returns, plot_eval_perf
+from rollout_utils import (
+    exp_init,
+    iter_init,
+    rollout_sample,
+    train_agent,
+    process_iter_returns,
+    plot_eval_perf,
+)
 
 # Experiment init
 params, results_dir, seed = exp_init()
@@ -24,7 +30,9 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
     # Sampling
     t_returns = []
     for train_runs in tqdm_context(range(params["n_trains"]), desc="Train Rollouts"):
-        rollout_return = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="train")
+        rollout_return = rollout_sample(
+            env, agent, replay_buffer, params["n_steps"], mode="train"
+        )
         t_returns.append(rollout_return)
 
     # Replay + Learning
@@ -33,8 +41,12 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
     # Evaluation
     e_returns = []
     if (it + 1) % 1 == 0:
-        for eval_runs in tqdm_context(range(params["n_evals"]), desc="Evaluation Rollouts"):
-            rollout_return = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="eval")
+        for eval_runs in tqdm_context(
+            range(params["n_evals"]), desc="Evaluation Rollouts"
+        ):
+            rollout_return = rollout_sample(
+                env, agent, replay_buffer, params["n_steps"], mode="eval"
+            )
             e_returns.append(rollout_return)
 
     process_iter_returns(
@@ -53,5 +65,4 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
 _ = rollout_sample(env, agent, replay_buffer, params["n_steps"], mode="final")
 
 # Evaluation performance plot
-plot_eval_perf(results_dir, params, eval_returns)
-
+plot_eval_perf(results_dir, params, eval_returns, params["save_data"])
