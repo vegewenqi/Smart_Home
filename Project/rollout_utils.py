@@ -107,9 +107,12 @@ def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
             replay_buffer.push(
                 state, obs, action, reward, next_state, next_obs, done, add_info
             )
-            # print([state, action])
-            # print(reward)
-
+            print(state)
+            print([obs, action])
+            print(reward)
+            print(next_state)
+            print(add_info)
+            p()
         if mode == "final":
             print([state, action])
             print(reward)

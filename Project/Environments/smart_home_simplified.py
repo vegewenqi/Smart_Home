@@ -149,46 +149,32 @@ class SmartHome_simplified(Env, ABC):
         COP = self.a_cop * T_out + self.b_cop * (0.5 * (T_2 + T_3)) + self.c_cop
 
         # ODEs
-        d_T_w = (
-            1 / self.C_w * (self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w))
+        d_T_w = (1 / self.C_w) * (
+            self.k_w_out * (T_out - T_w) + self.k_w_in * (T_in - T_w)
         )
-        d_T_in = (
-            1 / self.C_in * (self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in))
+        d_T_in = (1 / self.C_in) * (
+            self.k_w_in * (T_w - T_in) + self.k_g_in * (T_g - T_in)
         )
-        d_T_g = 1 / self.C_g * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
-        d_T_p = (
-            1
-            / self.C_p
-            * (self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p))
+        d_T_g = (1 / self.C_g) * (self.k_g_in * (T_in - T_g) + self.k_p_g * (T_p - T_g))
+        d_T_p = (1 / self.C_p) * (
+            self.k_p_g * (T_g - T_p) + self.M_inl * self.C_wat * (T_inl - T_p)
         )
-        d_T_1 = (
-            1
-            / (self.m_1 * self.C_wat)
-            * (
-                self.R_1 * (T_2 - T_1)
-                - self.R_w * (T_1 - T_out)
-                + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
-            )
+        d_T_1 = (1 / (self.m_1 * self.C_wat)) * (
+            self.R_1 * (T_2 - T_1)
+            - self.R_w * (T_1 - T_out)
+            + X_v * self.M_inl * self.C_wat * (T_2 - T_1)
         )
-        d_T_2 = (
-            1
-            / (self.m_2 * self.C_wat)
-            * (
-                self.R_2 * (T_3 - T_2)
-                - self.R_2 * (T_2 - T_1)
-                - self.R_w * (T_2 - T_out)
-                + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
-                + COP * 1000 * P_hp
-            )
+        d_T_2 = (1 / (self.m_2 * self.C_wat)) * (
+            self.R_2 * (T_3 - T_2)
+            - self.R_2 * (T_2 - T_1)
+            - self.R_w * (T_2 - T_out)
+            + X_v * self.M_inl * self.C_wat * (T_3 - T_2)
+            + COP * 1000 * P_hp
         )
-        d_T_3 = (
-            1
-            / (self.m_3 * self.C_wat)
-            * (
-                -self.R_3 * (T_3 - T_2)
-                - self.R_w * (T_3 - T_out)
-                + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
-            )
+        d_T_3 = (1 / (self.m_3 * self.C_wat)) * (
+            -self.R_3 * (T_3 - T_2)
+            - self.R_w * (T_3 - T_out)
+            + X_v * self.M_inl * self.C_wat * (T_ret - T_3)
         )
         d_E = (
             1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
@@ -238,30 +224,18 @@ class SmartHome_simplified(Env, ABC):
         COP = self.a_cop * T_out + self.b_cop * T_2 + self.c_cop
 
         # ODEs
-        d_T_in = (
-            1
-            / self.C_in
-            * (
-                theta_model[0] * self.k_w_out * self.k_w_in * (T_out - T_in)
-                + theta_model[1] * self.k_g_in * (T_g - T_in)
-            )
-        )
-        d_T_g = (
-            1
-            / self.C_g
-            * (
-                theta_model[2] * self.k_g_in * (T_in - T_g)
-                + theta_model[3] * self.M_inl * self.C_wat * X_v * (T_2 - T_g)
-            )
-        )
-        d_T_2 = (
-            1
-            / ((self.m_1 + self.m_2 + self.m_3) * self.C_wat)
-            * (
-                -theta_model[4] * self.R_w * (T_2 - T_out)
-                + theta_model[5] * X_v * self.M_inl * self.C_wat * (T_g - T_2)
-                + COP * 1000 * P_hp
-            )
+        d_T_in = (1 / self.C_in) * (
+            theta_model[0] * self.k_w_out * self.k_w_in * (T_out - T_in)
+            + theta_model[1] * self.k_g_in * (T_g - T_in)
+        ) + theta_model[6]
+        d_T_g = (1 / self.C_g) * (
+            theta_model[2] * self.k_g_in * (T_in - T_g)
+            + theta_model[3] * self.M_inl * self.C_wat * X_v * (T_2 - T_g)
+        ) + theta_model[7]
+        d_T_2 = (1 / ((self.m_1 + self.m_2 + self.m_3) * self.C_wat)) * (
+            -theta_model[4] * self.R_w * (T_2 - T_out)
+            + theta_model[5] * X_v * self.M_inl * self.C_wat * (T_g - T_2)
+            + COP * 1000 * P_hp
         )
         d_E = 1 / 3600 * (self.eta * P_ch - 1 / self.eta * P_dis)
         dot_state = csd.vertcat(d_T_in, d_T_g, d_T_2, d_E)
@@ -289,7 +263,7 @@ class SmartHome_simplified(Env, ABC):
         # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
         #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         # ) * (np.random.normal(scale=1, size=8))
-        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.0 * np.array(
+        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
             [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         ) * (self.rng1.normal(scale=1.0, size=8))
 

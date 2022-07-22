@@ -27,10 +27,12 @@ class Smart_Home_MPCAgent(TrainableController):
         self.adv_wt = 0.01 * self.rng1.random((self.actor.actor_wt.shape[0], 1))
 
         # Parameter bounds
-        self.theta_low_bound = np.array([[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.001, 0.001, 0.001]]).T
-        self.theta_up_bound = np.array([[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, np.inf, np.inf, 4.0]]).T
+        self.theta_low_bound = np.array([[0.001, 0.001, 0.001, 0.001, 0.001, 0.001, -5.0, -5.0, 0.0, 0.0, 0.0]]).T
+        self.theta_up_bound = np.array([[10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 5.0, 5.0, np.inf, np.inf, 4.0]]).T
 
-        self.actor.actor_wt[-3:] = np.array([[2.0, 10.0, 1.0]]).T
+        # self.actor.actor_wt[:6] = np.ones((6, 1))
+        self.actor.actor_wt[:8] = np.array([[1.01, 1.09, 0.867, 1.269, 1.096, 1.099, 0.0256, -0.023]]).T
+        self.actor.actor_wt[-3:] = np.array([[4.973, 30.117, 3.154]]).T
         self.actor.actor_wt = self.actor.actor_wt.clip(self.theta_low_bound, self.theta_up_bound)
 
     def state_to_feature(self, state):
@@ -93,24 +95,24 @@ class Smart_Home_MPCAgent(TrainableController):
                 soln = info["soln"]
                 pi_act = soln["x"].full()[: self.action_dim][:, 0]
 
-                try:
-                    jacob_pi = self.actor.dPidP(
-                        o, self.actor.actor_wt, info
-                    )  # jacob:[n_a, n_sfeature]
-                    psi = np.matmul(
-                        jacob_pi.T, (actions[j] - pi_act)[:, None]
-                    )  # psi: [n_sfeature, 1]
+                # try:
+                jacob_pi = self.actor.dPidP(
+                    o, self.actor.actor_wt, info
+                )  # jacob:[n_a, n_sfeature]
+                psi = np.matmul(
+                    jacob_pi.T, (actions[j] - pi_act)[:, None]
+                )  # psi: [n_sfeature, 1]
 
-                    aq += np.matmul(psi, psi.T)
-                    bq += psi * (
-                            rewards[j]
-                            + (1 - dones[j]) * self.gamma * self.get_value(next_obss[j])
-                            - self.get_value(o)
-                    )
-                    gg += np.matmul(np.matmul(jacob_pi.T, jacob_pi), self.adv_wt)
-                except:
-                    print(info)
-                    p()
+                aq += np.matmul(psi, psi.T)
+                bq += psi * (
+                        rewards[j]
+                        + (1 - dones[j]) * self.gamma * self.get_value(next_obss[j])
+                        - self.get_value(o)
+                )
+                gg += np.matmul(np.matmul(jacob_pi.T, jacob_pi), self.adv_wt)
+                # except:
+                #     print(info)
+                #     p()
                 # x = soln["x"].full()
                 # lam_g = soln["lam_g"].full()
                 # z = np.concatenate((x, lam_g), axis=0)
@@ -129,7 +131,8 @@ class Smart_Home_MPCAgent(TrainableController):
             self.adv_wt = np.linalg.solve(aq, bq)
 
             # Policy param update
-            self.actor.actor_wt -= (self.actor_lr/batch_size) * gg
+            self.actor.actor_wt[: 6, :] -= (self.actor_lr * 0.0 / batch_size) * gg[:6, :]
+            self.actor.actor_wt[6:, :] -= (self.actor_lr/batch_size) * gg[6:, :]
             self.actor.actor_wt = self.actor.actor_wt.clip(self.theta_low_bound, self.theta_up_bound)
             print("Params updated")
             print(self.actor.actor_wt.T)
@@ -209,7 +212,7 @@ class Custom_QP_formulation:
 
         # theta
         # dimension = 19
-        self.theta_model = csd.MX.sym("theta_model", 6)
+        self.theta_model = csd.MX.sym("theta_model", 8)
         self.theta_in = csd.MX.sym("theta_in", 1)
         self.theta_en = csd.MX.sym("theta_en", 2)
         # self.theta_t = csd.MX.sym("theta_t", 3)
@@ -257,8 +260,6 @@ class Custom_QP_formulation:
         hu.append(0.0 - self.U[4, 0])
         hu.append((self.U[4, 0]) - 3.0)
         # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-        # hu.append((0.2 - self.Sigma[4, 0]) - self.U[5, 0])
-        # hu.append((self.U[5, 0]) - (0.8 + self.Sigma[4, 0]))
         hu.append(0.2 - self.U[5, 0])
         hu.append(self.U[5, 0] - 0.8)
         # 0 < p_ch + theta_ch < 1 + sigma_ch
@@ -308,8 +309,6 @@ class Custom_QP_formulation:
             hu.append(0.0 - self.U[4, i + 1])
             hu.append((self.U[4, i + 1]) - 3.0)
             # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-            # hu.append((0.2 - self.Sigma[4, i + 1]) - (self.U[5, i + 1]))
-            # hu.append((self.U[5, i + 1]) - (0.8 + self.Sigma[4, i + 1]))
             hu.append(0.2 - self.U[5, i + 1])
             hu.append(self.U[5, i + 1] - 0.8)
             # 0 < p_ch + theta_ch < 1 + sigma_ch

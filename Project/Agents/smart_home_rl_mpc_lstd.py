@@ -27,7 +27,7 @@ class Smart_Home_MPCAgent(TrainableController):
         self.adv_wt = 0.01 * self.rng1.random((self.actor.actor_wt.shape[0], 1))
 
         # Parameter bounds
-        self.theta_low_bound = np.array([[0.001, 0.001, 0.001]]).T
+        self.theta_low_bound = np.array([[0.0, 0.0, 0.0]]).T
         self.theta_up_bound = np.array([[np.inf, np.inf, 4.0]]).T
 
         self.actor.actor_wt[-3:] = np.array([[5.0, 5.0, 1.0]]).T
@@ -228,10 +228,10 @@ class Custom_QP_formulation:
         # self.theta_model = csd.MX.sym("theta_model", 6)
         self.theta_in = csd.MX.sym("theta_in", 1)
         self.theta_en = csd.MX.sym("theta_en", 2)
-        self.theta_t = csd.MX.sym("theta_t", 3)
+        # self.theta_t = csd.MX.sym("theta_t", 3)
         # self.theta_hp = csd.MX.sym("theta_hp", 1)
         # self.theta_xv = csd.MX.sym("theta_xv", 1)
-        self.theta_e = csd.MX.sym("theta_e", 1)
+        # self.theta_e = csd.MX.sym("theta_e", 1)
         # self.theta_ch_dis = csd.MX.sym("theta_ch_dis", 2)
         # self.theta_buy_sell = csd.MX.sym("theta_buy_sell", 2)
         # self.theta = csd.vertcat(self.theta_model, self.theta_in, self.theta_en, self.theta_t,
@@ -278,8 +278,6 @@ class Custom_QP_formulation:
         hu.append(0.0 - self.U[4, 0])
         hu.append((self.U[4, 0]) - 3.0)
         # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-        # hu.append((0.2 - self.Sigma[4, 0]) - self.U[5, 0])
-        # hu.append((self.U[5, 0]) - (0.8 + self.Sigma[4, 0]))
         hu.append(0.2 - self.U[5, 0])
         hu.append(self.U[5, 0] - 0.8)
         # 0 < p_ch + theta_ch < 1 + sigma_ch
@@ -354,8 +352,6 @@ class Custom_QP_formulation:
             hu.append(0.0 - self.U[4, i + 1])
             hu.append((self.U[4, i + 1]) - 3.0)
             # 0.2 + sigma_xv < p_xv + theta_xv < 0.8 + sigma_xv
-            # hu.append((0.2 - self.Sigma[4, i + 1]) - (self.U[5, i + 1]))
-            # hu.append((self.U[5, i + 1]) - (0.8 + self.Sigma[4, i + 1]))
             hu.append(0.2 - self.U[5, i + 1])
             hu.append(self.U[5, i + 1] - 0.8)
             # 0 < p_ch + theta_ch < 1 + sigma_ch

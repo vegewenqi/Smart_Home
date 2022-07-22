@@ -12,14 +12,13 @@
         "dt": 900
     },
     "agent": "SmartHomeSmp_RLMPC_LSTD",
-    "agent_params":{
-        "cost_params":{"cost_defn": "custom"},
-        "eps": 0.05,
+    "agent_params": {
+        "cost_params": {"cost_defn": "custom"},
+        "eps": 0.01,
         "gamma": 0.98,
-        "actor_lr": 1e-5,
+        "actor_lr": 3e-5,
         "horizon": 6,
-        "train_params":{"iterations": 50,
-                        "batch_size": 64},
+        "train_params": {"iterations": 25, "batch_size": 64},
         "experience_replay": false,
         "constrained_updates": false,
         "debug": false
@@ -28,7 +27,7 @@
     "save_data": false,
     "n_iterations": 50,
     "seed": 1,
-    "n_trains":1,
+    "n_trains": 1,
     "n_steps": 96,
     "n_evals": 0,
     "buffer_maxlen": 1000

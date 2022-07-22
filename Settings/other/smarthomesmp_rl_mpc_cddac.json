@@ -14,13 +14,13 @@
     "agent": "SmartHomeSmp_RLMPC_CDDAC",
     "agent_params": {
         "cost_params": {"cost_defn": "custom"},
-        "eps": 0.01,
+        "eps": 0.5,
         "gamma": 0.99,
-        "actor_lr": 0.001,
+        "actor_lr": 1e-3,
         "nu_lr": 1e-5,
         "vi_lr": 1e-5,
         "omega_lr": 1e-5,
-        "policy_delay": 2,
+        "policy_delay": 5,
         "mpc_horizon": 6,
         "train_params": {"iterations": 25, "batch_size": 64},
         "debug": false
