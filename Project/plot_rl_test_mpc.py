@@ -29,8 +29,8 @@ def plot_data(data1, data2, state_dim, action_dim, n_step):
     time = np.arange(n_step)/4
 
     plt.figure(1)
-    for i in range(8):
-        plt.subplot(4, 2, i + 1)
+    for i in range(4):
+        plt.subplot(2, 2, i + 1)
         if i == 1:
             plt.plot(time, state1[i, :], label=r'$\theta_0$')
             plt.plot(time, state2[i, :], label=r'$\theta^{\star}$')
@@ -95,10 +95,10 @@ def plot_data(data1, data2, state_dim, action_dim, n_step):
 #################
 if __name__ == "__main__":
     ### read data and plot
-    f_b = open('results_rl_initial_theta.pkl', "rb")
+    f_b = open('Results/SmartHome/results_rl_initial_theta.pkl', "rb")
     results_b = pickle.load(f_b)
     f_b.close()
-    f_a = open('results_rl_trained_theta.pkl', "rb")
+    f_a = open('Results/SmartHome/results_rl_trained_theta.pkl', "rb")
     results_a = pickle.load(f_a)
     f_a.close()
-    plot_data(results_b, results_a, state_dim=8, action_dim=6, n_step=96)
+    plot_data(results_b, results_a, state_dim=4, action_dim=6, n_step=96)

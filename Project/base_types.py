@@ -4,7 +4,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 
 
-class Env(gym.Env, ABC):
+class Env(gym.Env):
     goal_state = None
     goal_mask = None
     supports_rendering = False

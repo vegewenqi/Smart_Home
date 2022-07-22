@@ -40,7 +40,8 @@ data_set = np.concatenate((states, actions, rollout_returns, rollout_returns_spo
 # # Average return
 # Return = []
 # for eval_runs in tqdm_context(range(params["n_evals"]), desc="Evaluation Rollouts"):
-#     states, actions, rollout_returns = rollout_sample(env, agent, replay_buffer, params["epi_length"], mode="eval")
+#     states, actions, rollout_returns, rollout_returns_spo, rollout_returns_temp, uncs = rollout_sample(
+#         env, agent, replay_buffer, params["epi_length"], mode="eval")
 #     data_set = Return.append(rollout_returns[0, -1])
 # Return = np.mean(Return)
 

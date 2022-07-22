@@ -34,13 +34,13 @@ class Smart_Home_MPCAgent(TrainableController):
         self.num_policy_update = 0
         self.norm2_delta_theta = []
 
-        self.theta_low_bound = np.array([0, 0, 0, 0, 0, 0,
+        self.theta_low_bound = np.array([0, 0, 0, 0, 0, 0, -np.inf, -np.inf,
                                          0, -np.inf, -np.inf,
                                          0, 0,
                                          0, 0
                                          ])
 
-        self.theta_up_bound = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf,
+        self.theta_up_bound = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf,
                                         np.inf, np.inf, np.inf,
                                         np.inf, np.inf,
                                         10, 1
@@ -211,7 +211,7 @@ class Custom_QP_formulation:
         self.PRICE_dim = 2 * self.N
         # theta
         # dimension = 19
-        self.theta_model = csd.MX.sym("theta_model", 6)
+        self.theta_model = csd.MX.sym("theta_model", 8)
         self.theta_in = csd.MX.sym("theta_in", 3)
         self.theta_en = csd.MX.sym("theta_en", 2)
         self.theta_t = csd.MX.sym("theta_t", 1)
@@ -397,6 +397,7 @@ class Custom_MPCActor(Custom_QP_formulation):
 
         self.actor_wt = np.concatenate((
             np.ones(6),
+            np.zeros(2),
             np.array([5, 0, 0]),
             np.array([300, 3]),
             np.zeros(2)), axis=None)[:, None]
