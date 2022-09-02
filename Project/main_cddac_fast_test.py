@@ -37,7 +37,7 @@ states, actions, rollout_returns, rollout_returns_spo, rollout_returns_temp, unc
 
 data_set = np.concatenate((states, actions, rollout_returns, rollout_returns_spo, rollout_returns_temp, uncs))
 
-# # Average return
+# # # Average return
 # Return = []
 # for eval_runs in tqdm_context(range(params["n_evals"]), desc="Evaluation Rollouts"):
 #     states, actions, rollout_returns, rollout_returns_spo, rollout_returns_temp, uncs = rollout_sample(
@@ -47,7 +47,7 @@ data_set = np.concatenate((states, actions, rollout_returns, rollout_returns_spo
 
 ### save results
 Results = data_set
-f = open('Results/SmartHome/results_rl_trained_theta.pkl', "wb")
+f = open('Results/SmartHome/results_rl_trained_theta33.pkl', "wb")
 # f = open('Results/SmartHome/results_rl_initial_theta.pkl', "wb")
 pickle.dump(Results, f)
 f.close()

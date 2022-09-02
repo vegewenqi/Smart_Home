@@ -4,38 +4,27 @@ from helpers import tqdm_context
 from Agents.abstract_agent import TrainableController
 
 
-def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
-    # trained_theta = np.array([-3.90143530e-01, -3.90268995e-01, -3.90063883e-01, -3.90031666e-01, 5.38572361e+00,
-    #                           3.90385042e-01, 3.90385042e-01, 3.00419620e+02, 3.41867374e+00, -1.40794169e-01,
-    #                           3.32972969e-01, 1.85456924e-01, -2.52337309e-01, 1.00000000e-01, 2.32853000e-03,
-    #                           -4.22412097e-01, -3.93204979e-01, 1.00000000e-01, -1.08394830e-02])[:, None]
-
-    # trained_theta = np.array([1.57913644, 0.44135772, 1.53872939, 0.44796594, 1.53474019,
-    #                           1.53678736, 4.4675957, -0.52133502, -0.52133502, 299.57024899,
-    #                           2.56261849, 0.51741059, 0.0])[:, None]
-
-    trained_theta = np.array([1.01020026e+00, 1.09054420e+00, 8.67374319e-01, 1.26946589e+00,
-                     1.09615755e+00, 1.09989011e+00, 2.56043457e-02, - 2.30493123e-02,
-                     4.97249099e+00, - 3.18545362e-02, - 3.18545362e-02, 3.01166427e+01,
-                     3.15368263e+00, 4.12612544e-02, 0.00000000e+00])[:, None]
+def rollout_sample(env, agent, replay_buffer, n_step, mode="eval"):
+    trained_theta = np.array([1.00219891e+00, 1.00237787e+00, 9.97582204e-01, 9.99608593e-01, 1.00143571e+00,
+                              1.00032285e+00, 1.94246887e-02, -4.59972079e-03, 5.00104884e+00, 2.51232104e-03,
+                              2.51232104e-03, 2.99434724e+01, 2.94344886e+00, 0.00000000e+00, 5.86117806e-04])[:, None]
 
     state = env.reset()
-    state = env.extract_state(state)
+    state_4 = env.extract_state(state)
 
     rollout_return = 0
     rollout_return_spo = 0
     rollout_return_temp = 0
-    states = np.zeros((agent.obs_dim, n_step))
+    states = np.zeros((agent.obs_dim+4, n_step))
     actions = np.zeros((agent.action_dim, n_step))
     uncs = np.zeros((4, n_step))
     rollout_returns = np.zeros((1, n_step))
     rollout_returns_spo = np.zeros((1, n_step))
     rollout_returns_temp = np.zeros((1, n_step))
-
     for step in tqdm_context(range(n_step), desc="Episode", pos=1):
         print(f'evaluation step {step}-------------')
-        # action, add_info = agent.get_action(state, time=env.t, mode=mode)  ### use initial theta
-        action, add_info = agent.get_action(state, act_wt=trained_theta, time=env.t, mode=mode)
+        # action, add_info = agent.get_action(state_4, time=env.t, mode=mode)
+        action, add_info = agent.get_action(state_4, act_wt=trained_theta, time=env.t, mode=mode)
         next_state, reward, done, l_spo, l_temp, unc_t = env.step(action)
 
         states[:, step] = state
@@ -55,7 +44,7 @@ def rollout_sample(env, agent, replay_buffer, n_step, mode="train"):
 
         # state = next_state.copy()
         state = next_state
-        state = env.extract_state(state)
+        state_4 = env.extract_state(next_state)
 
     return states, actions, rollout_returns, rollout_returns_spo, rollout_returns_temp, uncs
 

@@ -45,7 +45,15 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
     state = env_train.extract_state(state)
     for step in tqdm_context(range(params["epi_length"]), desc="Episode", pos=1):
         # print(f'Iteration {it} epi_step {step}-------------')
+
+        # if (it)*96+(step+1) > 600:
+        #     action, add_info = agent.get_action(state, mode="train")
+        # else:
+        #     action, add_info = agent.get_uniform_action(state, mode="train")
+        #     print('uniform action')
+
         action, add_info = agent.get_action(state, mode="train")
+
         next_state, reward, done = env_train.step(action)
         next_state = env_train.extract_state(next_state)
         add_info["phi_ns"] = agent.state_to_feature(next_state.squeeze())
@@ -72,11 +80,29 @@ for it in tqdm_context(range(params["n_iterations"]), desc="Iterations", pos=3):
             print(f'agent.actor.actor_wt = {agent.actor.actor_wt.squeeze()}')
             print(f"Evaluation returns: {eval_returns}")
 
+            # change learning rate
+            if mean(eval_return) < 900:
+                print('Decrease learning rate')
+                agent.actor_lr = 0.000001
+                agent.nu_lr = 0.0000002
+                agent.vi_lr = 0.0000002
+                agent.omega_lr = 0.0000002
+                agent.eps = 0.05
+
+            # early stop
+            if mean(eval_return) < 103:
+                print('prepare for stop')
+                agent.actor_lr = 0.00000000001
+                agent.nu_lr = 0.0000000000002
+                agent.vi_lr = 0.0000000000002
+                agent.omega_lr = 0.000000000002
+                # agent.eps = 0.05
+           
 
 ### save results
-Results = {'theta_log': theta_log,
-           'eval_returns': eval_returns}
-f = open('Results/SmartHome/results_rl_try.pkl', "wb")
-pickle.dump(Results, f)
-f.close()
+# Results = {'theta_log': theta_log,
+#            'eval_returns': eval_returns}
+# f = open('Results/SmartHome/results_rl_try_4.pkl', "wb")
+# pickle.dump(Results, f)
+# f.close()
 print('Results saved successfully！')

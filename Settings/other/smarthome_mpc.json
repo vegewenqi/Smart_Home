@@ -16,7 +16,7 @@
         "eps": 0.05,
         "gamma": 0.99,
         "actor_lr": 0,
-        "horizon": 48,
+        "horizon": 24,
         "train_params":{"iterations": 1,
                         "batch_size": 1},
         "experience_replay": false,

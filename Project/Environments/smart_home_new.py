@@ -241,12 +241,12 @@ class SmartHome(Env):
     #     return mpc_model
 
     def reset(self):
-        # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
-        #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
-        # ) * (np.random.normal(scale=1, size=8))
-        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.0 * np.array(
+        self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.1 * np.array(
             [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
         ) * (np.random.normal(scale=1, size=8))
+        # self.state = np.array([15, 25, 15, 27, 38, 50, 16, 2]) + 0.0 * np.array(
+        #     [1, 0.05, 1, 1, 1, 0.1, 1, 0.1]
+        # ) * (np.random.normal(scale=1, size=8))
 
         self.state = self.state.clip(
             self.observation_space.low, self.observation_space.high

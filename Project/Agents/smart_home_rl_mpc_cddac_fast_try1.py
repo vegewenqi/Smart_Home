@@ -112,6 +112,44 @@ class Smart_Home_MPCAgent(TrainableController):
             act = act.clip(self.env.action_space.low, self.env.action_space.high)
         return act, info
 
+    def get_uniform_action(self, state, act_wt=None, time=None, mode=None):
+        _, info = self.actor.act_forward(state, act_wt=act_wt, time=time, mode=mode)  # act_wt = self.actor.actor_wt
+
+        pi = np.array([np.random.rand(), np.random.rand(), 5 * np.random.rand(),
+                       5 * np.random.rand(), 3 * np.random.rand(), 0.2 + 0.6 * np.random.rand()])
+        case = np.random.randint(4)
+        if case == 0:
+            pi[[0, 2]] = 0
+        elif case == 1:
+            pi[[0, 3]] = 0
+        elif case == 2:
+            pi[[1, 2]] = 0
+        else:
+            pi[[1, 3]] = 0
+
+        if mode == "train":
+            info['pi'] = pi
+
+            # ## act = pi + self.eps * (-0.5 + np.random.rand(self.action_dim)) * [1, 1, 5, 5, 3, 1]  # self.eps=0.2
+            # act = pi + self.eps * np.random.randn(self.action_dim) * [1, 1, 5, 5, 3, 1]
+
+            # ##gradually decrease the action exploration
+            act = pi + (self.eps * np.random.randn(self.action_dim) * [1, 1, 5, 5, 3, 1]) * \
+                  (0.9985 ** self.num_policy_update)
+
+            act = act.clip(self.env.action_space.low, self.env.action_space.high)
+            # calculate features and save those info
+            phi_s = self.state_to_feature(state.squeeze())
+            dpi_dtheta_s = self.actor.dPidP(state, info['act_wt'], info)
+            phi_sa = self.state_action_to_feature(act[:, None], pi[:, None], dpi_dtheta_s)
+            info['phi_s'] = phi_s
+            info['phi_sa'] = phi_sa
+            info["dpi_dtheta_s"] = dpi_dtheta_s
+        else:  # mode == "eval" or "mpc"
+            act = pi
+            act = act.clip(self.env.action_space.low, self.env.action_space.high)
+        return act, info
+
     def train(self, replay_buffer, train_it):
         delta_dpidpi = 0
         for train_i in tqdm_context(range(train_it), desc="Training Iterations"):
@@ -355,7 +393,7 @@ class Custom_QP_formulation:
         }
         self.vsolver = csd.nlpsol("vsolver", "ipopt", vnlp_prob, opts_setting)
         # self.dPi, self.dLagV = self.build_sensitivity(J, G, Hu, Hx)
-        self.dR_sensfunc = self.build_sensitivity(J, G, H)
+        self.dR_sensfunc, self.dPi, self.drz = self.build_sensitivity(J, G, H)
 
     def build_sensitivity(self, J, g, h):
         lamb = csd.MX.sym("lamb", g.shape[0])
@@ -371,7 +409,13 @@ class Custom_QP_formulation:
         z = csd.vertcat(self.Opt_Vars, mult)
         R_kkt = csd.Function("R_kkt", [z, self.P], [Rr])
         dR_sensfunc = R_kkt.factory("dR", ["i0", "i1"], ["jac:o0:i0", "jac:o0:i1"])
-        return dR_sensfunc
+
+        [dRdz, dRdP] = dR_sensfunc(z, self.P)
+        drz = csd.Function("drz", [z, self.P], [dRdz])
+        # dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim]
+        dzdP = (-csd.solve(dRdz, dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])).T
+        dPi = csd.Function("dPi", [z, self.P], [dzdP[:, :self.action_dim]])
+        return dR_sensfunc, dPi, drz
 
     def stage_cost_fn(self):
         l_spo = self.Price[0] * self.u[2] - self.Price[1] * self.u[3]
@@ -395,12 +439,21 @@ class Custom_MPCActor(Custom_QP_formulation):
 
         self.p_val = np.zeros((self.p_dim, 1))
 
-        self.actor_wt = np.concatenate((
-            np.ones(6),
-            np.zeros(2),
-            np.array([5, 0, 0]),
-            np.array([300, 3]),
-            np.zeros(2)), axis=None)[:, None]
+        # self.actor_wt = np.concatenate((
+        #     np.ones(6),
+        #     np.zeros(2),
+        #     np.array([5, 0, 0]),
+        #     np.array([300, 3]),
+        #     np.zeros(2)), axis=None)[:, None]
+
+        self.actor_wt = np.array([9.99454383e-01, 1.00003276e+00, 9.99998532e-01, 9.99990420e-01,
+                                  1.00000006e+00, 1.00000675e+00, 2.54631645e-02, -8.29237256e-04,
+                                  5, 0, 0, 30, 3, 0, 0])[:, None]
+
+        ### fitted theta with non-all-zero P_hp
+        # self.actor_wt = np.array([9.99454383e-01, 1.00003276e+00, 9.99998532e-01, 9.99990420e-01,
+        #                           1.00000006e+00, 1.00000675e+00, 2.02631645e-02, -8.29237256e-04,
+        #                           5, 0, 0, 30, 3, 0, 0])[:, None]
 
         self.X0 = None
         self.soln = None
@@ -459,10 +512,12 @@ class Custom_MPCActor(Custom_QP_formulation):
         self.p_val[self.obs_dim + self.theta_dim + self.UNC_dim:, :] = \
             np.reshape(self.env.price[:, time:time + self.N], (-1, 1), order='F')
 
-        [dRdz, dRdP] = self.dR_sensfunc(z, self.p_val)
-        dzdP = (-np.linalg.solve(dRdz, dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])).T
-        # dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])
-        dpi = dzdP[:, :self.action_dim]
+        # [dRdz, dRdP] = self.dR_sensfunc(z, self.p_val)
+        # dzdP = (-np.linalg.solve(dRdz, dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])).T
+        # # dzdP = -csd.inv(dRdz) @ dRdP[:, self.obs_dim:self.obs_dim + self.theta_dim])
+        # dpi = dzdP[:, :self.action_dim]
+
+        dpi = self.dPi(z, self.p_val).full()
         return dpi
 
     def param_update(self, lr, dJ, act_wt):

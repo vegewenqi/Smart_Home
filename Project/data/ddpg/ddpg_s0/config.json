@@ -1,0 +1,113 @@
+{
+    "ac_kwargs":	{
+        "hidden_sizes":	[
+            256,
+            256
+        ]
+    },
+    "act_noise":	1,
+    "actor_critic":	"MLPActorCritic",
+    "batch_size":	100,
+    "env_fn":	{
+        "<SmartHome instance>":	{
+            "A_pv":	35,
+            "C_g":	1800000,
+            "C_in":	4400000.0,
+            "C_p":	1700000.0,
+            "C_w":	3120000,
+            "C_wat":	4180,
+            "M_inl":	0.062,
+            "R_1":	18.8,
+            "R_2":	18.8,
+            "R_3":	18.8,
+            "R_w":	0.99,
+            "a_cop":	0.088,
+            "action_space":	{
+                "Box(0.0, [1.2 1.2 6.  6.  3.6 1. ], (6,), float32)":	{
+                    "_np_random":	null,
+                    "_shape":	[
+                        6
+                    ],
+                    "bounded_above":	"[ True  True  True  True  True  True]",
+                    "bounded_below":	"[ True  True  True  True  True  True]",
+                    "dtype":	"float32",
+                    "high":	"[1.2 1.2 6.  6.  3.6 1. ]",
+                    "high_repr":	"[1.2 1.2 6.  6.  3.6 1. ]",
+                    "low":	"[0. 0. 0. 0. 0. 0.]",
+                    "low_repr":	"0.0"
+                }
+            },
+            "b_cop":	-0.079,
+            "beta":	0.429,
+            "c_cop":	7.253,
+            "c_hig":	5,
+            "c_low":	5,
+            "dt":	900,
+            "epsilon_1234_sigma":	0.005,
+            "epsilon_app_sigma":	0.04,
+            "epsilon_out_sigma":	0.6,
+            "epsilon_rad_sigma":	0.006,
+            "eta":	0.9,
+            "k_g_in":	594.8,
+            "k_p_g":	506.2,
+            "k_w_in":	64.8,
+            "k_w_out":	64.8,
+            "m_1":	66.38,
+            "m_2":	66.38,
+            "m_3":	66.38,
+            "observation_space":	{
+                "Box([ 0.  0.  0.  0. 10. 10. 10.  0.  0.], [100. 100. 100. 100.  70.  70.  70.   5.  96.], (9,), float32)":	{
+                    "_np_random":	null,
+                    "_shape":	[
+                        9
+                    ],
+                    "bounded_above":	"[ True  True  True  True  True  True  True  True  True]",
+                    "bounded_below":	"[ True  True  True  True  True  True  True  True  True]",
+                    "dtype":	"float32",
+                    "high":	"[100. 100. 100. 100.  70.  70.  70.   5.  96.]",
+                    "high_repr":	"[100. 100. 100. 100.  70.  70.  70.   5.  96.]",
+                    "low":	"[ 0.  0.  0.  0. 10. 10. 10.  0.  0.]",
+                    "low_repr":	"[ 0.  0.  0.  0. 10. 10. 10.  0.  0.]"
+                }
+            },
+            "price":	"[[ 5.7125  5.7125  5.7125 ... 12.4375 12.4375 12.4375]\n [ 4.57    4.57    4.57   ...  9.95    9.95    9.95  ]]",
+            "rho":	7.5,
+            "state":	"[14.91504191 24.99321743 14.9915941  27.01498169 38.1706063  50.005558\n 16.15891214  1.99112068  0.        ]",
+            "uncertainty":	"[[ 0.          0.          0.         ...  0.          0.\n   0.        ]\n [ 0.02399876  0.02399876  0.02399876 ...  0.69616614  0.69616614\n   0.69616614]\n [ 3.620529    3.620529    3.620529   ... -8.9694713  -8.9694713\n  -8.9694713 ]]"
+        }
+    },
+    "epochs":	50,
+    "exp_name":	"ddpg",
+    "gamma":	0.99,
+    "logger":	{
+        "<spinup.utils.logx.EpochLogger object at 0x000001D16ACE4EE0>":	{
+            "epoch_dict":	{},
+            "exp_name":	"ddpg",
+            "first_row":	true,
+            "log_current_row":	{},
+            "log_headers":	[],
+            "output_dir":	"C:\\Users\\Administrator\\Dropbox (KAUST)\\ENMPC_RL\\Smart_Home\\Project\\data\\ddpg\\ddpg_s0",
+            "output_file":	{
+                "<_io.TextIOWrapper name='C:\\\\Users\\\\Administrator\\\\Dropbox (KAUST)\\\\ENMPC_RL\\\\Smart_Home\\\\Project\\\\data\\\\ddpg\\\\ddpg_s0\\\\progress.txt' mode='w' encoding='cp1252'>":	{
+                    "mode":	"w"
+                }
+            }
+        }
+    },
+    "logger_kwargs":	{
+        "exp_name":	"ddpg",
+        "output_dir":	"C:\\Users\\Administrator\\Dropbox (KAUST)\\ENMPC_RL\\Smart_Home\\Project\\data\\ddpg\\ddpg_s0"
+    },
+    "max_ep_len":	96,
+    "num_test_episodes":	10,
+    "pi_lr":	0.001,
+    "polyak":	0.995,
+    "q_lr":	0.001,
+    "replay_size":	1000000,
+    "save_freq":	1,
+    "seed":	0,
+    "start_steps":	10000,
+    "steps_per_epoch":	4000,
+    "update_after":	1000,
+    "update_every":	50
+}

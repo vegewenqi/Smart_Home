@@ -13,6 +13,10 @@ matplotlib = "*"
 odfpy = "*"
 torch = "*"
 seaborn = "*"
+tensorflow = "*"
+joblib = "*"
+mpi4py = "*"
+psutil = "*"
 
 [dev-packages]
 
